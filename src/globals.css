@@ -110,6 +110,11 @@
   --sidebar-accent-foreground: oklch(0.200 0.010 240);
   --sidebar-border: oklch(0.880 0.008 240);
   --sidebar-ring: oklch(0.540 0.190 213);
+
+  --border: oklch(28% .02 260/.7);
+  --brand: oklch(72% .16 250);
+  --accent-cyan: oklch(78% .14 200);
+  --accent-violet: oklch(70% .2 295);
 }
 
 .dark {
@@ -133,7 +138,7 @@
   --secondary-foreground: oklch(0.780 0.008 240);
 
   --muted: oklch(0.215 0.010 240);
-  --muted-foreground: oklch(0.540 0.010 240);
+  --muted-foreground: oklch(0.650 0.010 240);
 
   --accent: oklch(0.232 0.010 240);
   --accent-foreground: oklch(0.870 0.008 240);
@@ -165,6 +170,11 @@
   --sidebar-accent-foreground: oklch(0.870 0.008 240);
   --sidebar-border: oklch(0.260 0.010 240);
   --sidebar-ring: oklch(0.660 0.175 213);
+
+  --border: oklch(28% .02 260/.7);
+  --brand: oklch(72% .16 250);
+  --accent-cyan: oklch(78% .14 200);
+  --accent-violet: oklch(70% .2 295);
 }
 
 @layer base {
@@ -201,3 +211,69 @@
     background: oklch(0.38 0.01 240);
   }
 }
+
+utility bg-grid {
+  background-image:
+    linear-gradient(to right, var(--color-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+}
+
+@utility bg-radial-fade {
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 30%, color-mix(in oklch, var(--brand) 25%, transparent), transparent 70%),
+    radial-gradient(ellipse 50% 50% at 70% 80%, color-mix(in oklch, var(--accent-violet) 18%, transparent), transparent 70%);
+}
+
+@utility text-gradient-brand {
+  background: linear-gradient(120deg, var(--brand), var(--accent-cyan) 60%, var(--accent-violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility glow-brand {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--brand) 25%, transparent),
+    0 20px 60px -20px color-mix(in oklch, var(--brand) 50%, transparent);
+}
+
+/* ============== Keyframes ============== */
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.6); opacity: 0.8; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes stream {
+  0% { transform: translateX(-20%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+@keyframes ledger-tick {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+.animate-float { animation: float-y 6s ease-in-out infinite; }
+.animate-pulse-ring { animation: pulse-ring 2.4s ease-out infinite; }
+.animate-stream { animation: stream 4s linear infinite; }
+.animate-ledger-tick { animation: ledger-tick 1.6s ease-in-out infinite; }
+.animate-fade-up { animation: fade-up 0.6s ease-out both; }
+.animate-spin-slow { animation: spin-slow 12s linear infinite; }

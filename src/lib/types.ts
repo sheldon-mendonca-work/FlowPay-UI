@@ -2,7 +2,7 @@ export type OfferType = "DISCOUNT" | "CASHBACK";
 export type OfferStatus = "ACTIVE" | "EXHAUSTED" | "EXPIRED";
 export type TxStatus = "COMPLETED" | "PENDING" | "FAILED" | "PROCESSING";
 export type TimelineStepState = "pending" | "processing" | "success" | "failed";
-export type Currency = "USD" | "EUR" | "GBP";
+export type Currency = "USD" | "INR" | "GBP";
 
 export interface Offer {
   id: string;
