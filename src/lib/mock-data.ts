@@ -1,4 +1,4 @@
-import type { User, Offer, Transaction, LiveActivityEvent, CompanyOffer } from "./types";
+import type { User, Offer, Transaction, LiveActivityEvent, CompanyOffer } from "../types/types";
 
 export const USERS: User[] = [
   {
@@ -7,7 +7,7 @@ export const USERS: User[] = [
     name: "Alex Chen",
     avatarInitials: "AC",
     balance: 12_485.50,
-    currency: "USD",
+    currency: "INR",
   },
   {
     id: "usr_02",
@@ -15,7 +15,7 @@ export const USERS: User[] = [
     name: "Jordan Blake",
     avatarInitials: "JB",
     balance: 8_230.00,
-    currency: "USD",
+    currency: "INR",
   },
   {
     id: "usr_03",
@@ -23,7 +23,7 @@ export const USERS: User[] = [
     name: "Sam Rivera",
     avatarInitials: "SR",
     balance: 22_100.75,
-    currency: "USD",
+    currency: "INR",
   },
 ];
 
@@ -78,33 +78,33 @@ const now = new Date();
 const ago = (minutes: number) => new Date(now.getTime() - minutes * 60_000);
 
 export const SENDER_TRANSACTIONS: Transaction[] = [
-  { id: "tx_001", time: ago(2), counterparty: "Jordan Blake", amount: 340.00, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_002", time: ago(18), counterparty: "Sam Rivera", amount: 1_200.50, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_003", time: ago(45), counterparty: "Jordan Blake", amount: 75.00, currency: "USD", status: "FAILED", direction: "out" },
-  { id: "tx_004", time: ago(90), counterparty: "Sam Rivera", amount: 525.00, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_005", time: ago(180), counterparty: "Jordan Blake", amount: 89.99, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_006", time: ago(240), counterparty: "Sam Rivera", amount: 2_100.00, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_007", time: ago(360), counterparty: "Jordan Blake", amount: 450.00, currency: "USD", status: "PENDING", direction: "out" },
-  { id: "tx_008", time: ago(480), counterparty: "Sam Rivera", amount: 310.25, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_009", time: ago(600), counterparty: "Jordan Blake", amount: 65.00, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_010", time: ago(720), counterparty: "Sam Rivera", amount: 980.00, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_011", time: ago(900), counterparty: "Jordan Blake", amount: 145.50, currency: "USD", status: "COMPLETED", direction: "out" },
-  { id: "tx_012", time: ago(1080), counterparty: "Sam Rivera", amount: 3_500.00, currency: "USD", status: "COMPLETED", direction: "out" },
+  { id: "tx_001", time: ago(2), counterparty: "Jordan Blake", amount: 340.00, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_002", time: ago(18), counterparty: "Sam Rivera", amount: 1_200.50, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_003", time: ago(45), counterparty: "Jordan Blake", amount: 75.00, currency: "INR", status: "FAILED", direction: "out" },
+  { id: "tx_004", time: ago(90), counterparty: "Sam Rivera", amount: 525.00, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_005", time: ago(180), counterparty: "Jordan Blake", amount: 89.99, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_006", time: ago(240), counterparty: "Sam Rivera", amount: 2_100.00, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_007", time: ago(360), counterparty: "Jordan Blake", amount: 450.00, currency: "INR", status: "PENDING", direction: "out" },
+  { id: "tx_008", time: ago(480), counterparty: "Sam Rivera", amount: 310.25, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_009", time: ago(600), counterparty: "Jordan Blake", amount: 65.00, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_010", time: ago(720), counterparty: "Sam Rivera", amount: 980.00, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_011", time: ago(900), counterparty: "Jordan Blake", amount: 145.50, currency: "INR", status: "COMPLETED", direction: "out" },
+  { id: "tx_012", time: ago(1080), counterparty: "Sam Rivera", amount: 3_500.00, currency: "INR", status: "COMPLETED", direction: "out" },
 ];
 
 export const RECEIVER_TRANSACTIONS: Transaction[] = [
-  { id: "rx_001", time: ago(2), counterparty: "Alex Chen", amount: 340.00, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_002", time: ago(25), counterparty: "External", amount: 820.00, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_003", time: ago(55), counterparty: "Alex Chen", amount: 1_200.50, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_004", time: ago(120), counterparty: "External", amount: 60.00, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_005", time: ago(200), counterparty: "Alex Chen", amount: 525.00, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_006", time: ago(280), counterparty: "External", amount: 1_450.00, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_007", time: ago(400), counterparty: "Alex Chen", amount: 89.99, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_008", time: ago(520), counterparty: "External", amount: 230.00, currency: "USD", status: "FAILED", direction: "in" },
-  { id: "rx_009", time: ago(640), counterparty: "Alex Chen", amount: 310.25, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_010", time: ago(760), counterparty: "External", amount: 750.00, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_011", time: ago(900), counterparty: "Alex Chen", amount: 65.00, currency: "USD", status: "COMPLETED", direction: "in" },
-  { id: "rx_012", time: ago(1100), counterparty: "External", amount: 1_800.00, currency: "USD", status: "COMPLETED", direction: "in" },
+  { id: "rx_001", time: ago(2), counterparty: "Alex Chen", amount: 340.00, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_002", time: ago(25), counterparty: "External", amount: 820.00, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_003", time: ago(55), counterparty: "Alex Chen", amount: 1_200.50, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_004", time: ago(120), counterparty: "External", amount: 60.00, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_005", time: ago(200), counterparty: "Alex Chen", amount: 525.00, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_006", time: ago(280), counterparty: "External", amount: 1_450.00, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_007", time: ago(400), counterparty: "Alex Chen", amount: 89.99, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_008", time: ago(520), counterparty: "External", amount: 230.00, currency: "INR", status: "FAILED", direction: "in" },
+  { id: "rx_009", time: ago(640), counterparty: "Alex Chen", amount: 310.25, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_010", time: ago(760), counterparty: "External", amount: 750.00, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_011", time: ago(900), counterparty: "Alex Chen", amount: 65.00, currency: "INR", status: "COMPLETED", direction: "in" },
+  { id: "rx_012", time: ago(1100), counterparty: "External", amount: 1_800.00, currency: "INR", status: "COMPLETED", direction: "in" },
 ];
 
 export const INITIAL_LIVE_ACTIVITY: LiveActivityEvent[] = [
@@ -112,7 +112,7 @@ export const INITIAL_LIVE_ACTIVITY: LiveActivityEvent[] = [
     id: "act_001",
     type: "payment_received",
     amount: 340.00,
-    currency: "USD",
+    currency: "INR",
     from: "Alex Chen",
     message: "Payment received from Alex Chen",
     timestamp: ago(2),
@@ -121,7 +121,7 @@ export const INITIAL_LIVE_ACTIVITY: LiveActivityEvent[] = [
     id: "act_002",
     type: "cashback_received",
     amount: 17.00,
-    currency: "USD",
+    currency: "INR",
     message: "Cashback credited from CASH5PCT offer",
     timestamp: ago(18),
   },
@@ -135,7 +135,7 @@ export const INITIAL_LIVE_ACTIVITY: LiveActivityEvent[] = [
     id: "act_004",
     type: "payment_received",
     amount: 1_200.50,
-    currency: "USD",
+    currency: "INR",
     from: "Alex Chen",
     message: "Payment received from Alex Chen",
     timestamp: ago(90),
@@ -144,7 +144,7 @@ export const INITIAL_LIVE_ACTIVITY: LiveActivityEvent[] = [
     id: "act_005",
     type: "refund_received",
     amount: 75.00,
-    currency: "USD",
+    currency: "INR",
     message: "Refund processed for tx_003",
     timestamp: ago(150),
   },

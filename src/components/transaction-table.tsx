@@ -1,7 +1,7 @@
 
 
 import { cn } from "@/lib/utils";
-import type { Transaction, TxStatus } from "@/lib/types";
+import type { Transaction, TxStatus } from "@/types/types";
 
 function statusConfig(s: TxStatus) {
   switch (s) {
@@ -29,14 +29,17 @@ function formatTime(d: Date): string {
 interface TransactionTableProps {
   transactions: Transaction[];
   title?: string;
-  /** When true: fixed container height with internal scroll, sticky header, "View All" top-right */
+  /** Fixed container height with internal scroll, sticky header, "View All" top-right */
   fixedHeight?: boolean;
+  /** Render only the rows — no outer border card or title (for embedding in a parent card) */
+  bare?: boolean;
 }
 
 export function TransactionTable({
   transactions,
   title = "Recent Transactions",
   fixedHeight = false,
+  bare = false,
 }: TransactionTableProps) {
   if (fixedHeight) {
     return (
@@ -94,51 +97,62 @@ export function TransactionTable({
     );
   }
 
-  // Default (non-fixed) mode — used in receiver column
+  // Rows-only block — shared between bare and default modes
+  const rows = (
+    <div className="overflow-hidden">
+      <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-4 py-2 border-b border-border/50">
+        {["Time", "Counterparty", "Amount", "Status"].map((h) => (
+          <span key={h} className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+            {h}
+          </span>
+        ))}
+      </div>
+
+      {transactions.length === 0 && (
+        <div className="px-4 py-6 text-center text-xs text-muted-foreground">No transactions</div>
+      )}
+
+      {transactions.map((tx) => {
+        const cfg = statusConfig(tx.status);
+        return (
+          <div
+            key={tx.id}
+            className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-4 py-2.5 border-b border-border/30 last:border-0 hover:bg-accent/20 transition-colors"
+          >
+            <span className="text-[11px] text-muted-foreground font-mono tabular-nums">
+              {formatTime(tx.time)}
+            </span>
+            <span className="text-[11px] text-foreground truncate">{tx.counterparty}</span>
+            <span
+              className={cn(
+                "text-[11px] font-mono font-medium tabular-nums",
+                tx.direction === "out" ? "text-foreground" : "text-success"
+              )}
+            >
+              {tx.direction === "out" ? "-" : "+"}$
+              {tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </span>
+            <div className="flex items-center gap-1">
+              <span className={cn("size-1.5 rounded-full shrink-0", cfg.dot)} />
+              <span className={cn("text-[10px] font-mono capitalize", cfg.color)}>{cfg.label}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  // Bare mode — no outer wrapper (for embedding in a parent card)
+  if (bare) return rows;
+
+  // Default (non-fixed) mode
   return (
     <div className="rounded-lg border border-border bg-card">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">{title}</h3>
         <span className="text-[10px] text-muted-foreground font-mono">{transactions.length} total</span>
       </div>
-
-      <div className="overflow-hidden">
-        <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-4 py-2 border-b border-border/50">
-          {["Time", "Counterparty", "Amount", "Status"].map((h) => (
-            <span key={h} className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-              {h}
-            </span>
-          ))}
-        </div>
-
-        {transactions.slice(0, 10).map((tx) => {
-          const cfg = statusConfig(tx.status);
-          return (
-            <div
-              key={tx.id}
-              className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-4 py-2.5 border-b border-border/30 last:border-0 hover:bg-accent/20 transition-colors"
-            >
-              <span className="text-[11px] text-muted-foreground font-mono tabular-nums">
-                {formatTime(tx.time)}
-              </span>
-              <span className="text-[11px] text-foreground truncate">{tx.counterparty}</span>
-              <span
-                className={cn(
-                  "text-[11px] font-mono font-medium tabular-nums",
-                  tx.direction === "out" ? "text-foreground" : "text-success"
-                )}
-              >
-                {tx.direction === "out" ? "-" : "+"}$
-                {tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-              </span>
-              <div className="flex items-center gap-1">
-                <span className={cn("size-1.5 rounded-full shrink-0", cfg.dot)} />
-                <span className={cn("text-[10px] font-mono capitalize", cfg.color)}>{cfg.label}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {rows}
     </div>
   );
 }

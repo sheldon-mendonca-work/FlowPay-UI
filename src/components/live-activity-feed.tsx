@@ -2,7 +2,7 @@
 
 import { ArrowDownLeft, Coins, Tag, RotateCcw, Wifi } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { LiveActivityEvent } from "@/lib/types";
+import type { LiveActivityEvent } from "@/types/types";
 
 function eventConfig(type: LiveActivityEvent["type"]) {
   switch (type) {

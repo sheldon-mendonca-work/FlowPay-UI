@@ -212,7 +212,7 @@
   }
 }
 
-utility bg-grid {
+@utility bg-grid {
   background-image:
     linear-gradient(to right, var(--color-grid) 1px, transparent 1px),
     linear-gradient(to bottom, var(--color-grid) 1px, transparent 1px);
@@ -271,9 +271,9 @@ utility bg-grid {
   to { transform: rotate(360deg); }
 }
 
-.animate-float { animation: float-y 6s ease-in-out infinite; }
-.animate-pulse-ring { animation: pulse-ring 2.4s ease-out infinite; }
-.animate-stream { animation: stream 4s linear infinite; }
-.animate-ledger-tick { animation: ledger-tick 1.6s ease-in-out infinite; }
-.animate-fade-up { animation: fade-up 0.6s ease-out both; }
-.animate-spin-slow { animation: spin-slow 12s linear infinite; }
+@utility animate-float { animation: float-y 6s ease-in-out infinite; }
+@utility animate-pulse-ring { animation: pulse-ring 2.4s ease-out infinite; }
+@utility animate-stream { animation: stream 4s linear infinite; }
+@utility animate-ledger-tick { animation: ledger-tick 1.6s ease-in-out infinite; }
+@utility animate-fade-up { animation: fade-up 0.6s ease-out both; }
+@utility animate-spin-slow { animation: spin-slow 12s linear infinite; }

@@ -2,7 +2,7 @@
 
 import { X, Percent, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Offer } from "@/lib/types";
+import type { Offer } from "@/types/types";
 
 interface OfferSelectorProps {
   offers: Offer[];

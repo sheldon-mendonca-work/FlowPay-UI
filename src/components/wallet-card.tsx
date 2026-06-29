@@ -2,7 +2,9 @@
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import type { User } from "@/lib/types";
+import type { User } from "@/types/types";
+import { getCurrencySymbol } from "@/utils/currency";
+import { useMemo } from "react";
 
 interface WalletCardProps {
   user: User;
@@ -12,6 +14,9 @@ interface WalletCardProps {
 
 export function WalletCard({ user, variant = "sender", balanceDelta }: WalletCardProps) {
   const displayBalance = user.balance + (balanceDelta ?? 0);
+  const currencySymbol = useMemo(() => {
+    return getCurrencySymbol(user.currency)
+  }, [user.currency])
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -57,7 +62,7 @@ export function WalletCard({ user, variant = "sender", balanceDelta }: WalletCar
               balanceDelta && balanceDelta > 0 ? "text-success" : "text-foreground",
               balanceDelta && balanceDelta < 0 ? "text-destructive" : ""
             )}>
-              ${displayBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {currencySymbol}{displayBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
           <span className="text-xs font-mono text-muted-foreground pb-1">{user.currency}</span>

@@ -1,16 +1,14 @@
-
-
-import { useState } from "react";
-import { Plus, Tag, TrendingUp, DollarSign, BarChart3, Wallet, Percent, ArrowUpRight, Clock } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Tag, TrendingUp, DollarSign, BarChart3, Wallet, Percent, ArrowUpRight, Clock, Building2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CreateOfferDialog } from "@/components/create-offer-dialog";
 import { cn } from "@/lib/utils";
-import type { CompanyOffer } from "@/lib/types";
+import { fetchCompanyOffers } from "@/api/companyOffersAPI";
+import type { CompanyOffer, NavAccount } from "@/types/types";
 
 interface CompanyDashboardProps {
-  offers: CompanyOffer[];
-  onOfferCreated: (offer: CompanyOffer) => void;
+  selectedCompany: NavAccount;
 }
 
 function fmt(n: number) {
@@ -77,7 +75,6 @@ function OfferRow({ offer }: { offer: CompanyOffer }) {
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
-      {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className={cn(
@@ -109,14 +106,12 @@ function OfferRow({ offer }: { offer: CompanyOffer }) {
             <p className="text-xs text-muted-foreground mt-0.5">{benefitLabel} · min {fmt(offer.minPaymentAmount)}</p>
           </div>
         </div>
-
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono shrink-0">
           <Clock className="size-3" />
           {daysLeft}d left
         </div>
       </div>
 
-      {/* Metrics row */}
       <div className="grid grid-cols-3 gap-3">
         <div>
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
@@ -143,7 +138,6 @@ function OfferRow({ offer }: { offer: CompanyOffer }) {
         </div>
       </div>
 
-      {/* Budget bar */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-muted-foreground">
@@ -159,9 +153,24 @@ function OfferRow({ offer }: { offer: CompanyOffer }) {
   );
 }
 
-export function CompanyDashboard({ offers, onOfferCreated }: CompanyDashboardProps) {
+export function CompanyDashboard({ selectedCompany }: CompanyDashboardProps) {
+  const [offers, setOffers] = useState<CompanyOffer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
 
+  useEffect(() => {
+    setLoading(true);
+    fetchCompanyOffers(selectedCompany.id).then((data) => {
+      setOffers(data);
+      setLoading(false);
+    });
+  }, [selectedCompany.id]);
+
+  function handleOfferCreated(offer: CompanyOffer) {
+    setOffers((prev) => [offer, ...prev]);
+  }
+
+  // Per-company summary metrics
   const totalActiveOffers = offers.filter((o) => o.status === "ACTIVE").length;
   const totalRedemptions = offers.reduce((s, o) => s + o.totalRedemptions, 0);
   const totalBudget = offers.reduce((s, o) => s + o.initialBudget, 0);
@@ -177,91 +186,105 @@ export function CompanyDashboard({ offers, onOfferCreated }: CompanyDashboardPro
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
       <div className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Offer Management</h2>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Create and monitor promotional offers and their promotion pool accounts
-          </p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+            <Building2 className="size-4 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-foreground truncate">{selectedCompany.name}</h2>
+              <span className="text-[10px] font-mono text-muted-foreground shrink-0">{selectedCompany.accountId}</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Offer Management · {selectedCompany.currency}
+            </p>
+          </div>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
+        <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5 shrink-0">
           <Plus className="size-3.5" />
           Create Offer
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="p-6 flex flex-col gap-6">
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <ScrollArea className="flex-1">
+          <div className="p-6 flex flex-col gap-6">
 
-          {/* Metric cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <MetricCard
-              icon={<Tag className="size-4" />}
-              label="Active Offers"
-              value={String(totalActiveOffers)}
-              sub={`${offers.length} total`}
-              accent="primary"
-            />
-            <MetricCard
-              icon={<BarChart3 className="size-4" />}
-              label="Total Redemptions"
-              value={totalRedemptions.toLocaleString()}
-              accent="success"
-            />
-            <MetricCard
-              icon={<Wallet className="size-4" />}
-              label="Budget Remaining"
-              value={`$${Math.round(totalRemaining / 1000)}k`}
-              sub={`${budgetUtilized}% utilized`}
-              accent="warning"
-            />
-            <MetricCard
-              icon={<TrendingUp className="size-4" />}
-              label="Avg Conversion"
-              value={`${avgConversion}%`}
-              accent="primary"
-            />
-          </div>
-
-          {/* Offers list */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Offers
-              </h3>
-              <span className="text-[10px] text-muted-foreground font-mono">{offers.length} total</span>
+            {/* Per-company metric cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <MetricCard
+                icon={<Tag className="size-4" />}
+                label="Active Offers"
+                value={String(totalActiveOffers)}
+                sub={`${offers.length} total`}
+                accent="primary"
+              />
+              <MetricCard
+                icon={<BarChart3 className="size-4" />}
+                label="Total Redemptions"
+                value={totalRedemptions.toLocaleString()}
+                accent="success"
+              />
+              <MetricCard
+                icon={<Wallet className="size-4" />}
+                label="Budget Remaining"
+                value={`$${Math.round(totalRemaining / 1000)}k`}
+                sub={`${budgetUtilized}% utilized`}
+                accent="warning"
+              />
+              <MetricCard
+                icon={<TrendingUp className="size-4" />}
+                label="Avg Conversion"
+                value={`${avgConversion}%`}
+                accent="primary"
+              />
             </div>
 
-            {offers.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border/60 p-10 flex flex-col items-center gap-3 text-center">
-                <div className="size-10 rounded-full border border-border flex items-center justify-center">
-                  <Tag className="size-4 text-muted-foreground/40" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground font-medium">No offers yet</p>
-                  <p className="text-xs text-muted-foreground/60 mt-0.5">
-                    Create your first offer to start tracking redemptions
-                  </p>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)} className="gap-1.5">
-                  <Plus className="size-3.5" />
-                  Create Offer
-                </Button>
+            {/* Offers list */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Offers
+                </h3>
+                <span className="text-[10px] text-muted-foreground font-mono">{offers.length} total</span>
               </div>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {offers.map((offer) => (
-                  <OfferRow key={offer.id} offer={offer} />
-                ))}
-              </div>
-            )}
+
+              {offers.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border/60 p-10 flex flex-col items-center gap-3 text-center">
+                  <div className="size-10 rounded-full border border-border flex items-center justify-center">
+                    <Tag className="size-4 text-muted-foreground/40" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground font-medium">No offers yet</p>
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">
+                      Create the first offer for {selectedCompany.name}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)} className="gap-1.5">
+                    <Plus className="size-3.5" />
+                    Create Offer
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {offers.map((offer) => (
+                    <OfferRow key={offer.id} offer={offer} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </ScrollArea>
+        </ScrollArea>
+      )}
 
       <CreateOfferDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={onOfferCreated}
+        onCreated={handleOfferCreated}
       />
     </div>
   );

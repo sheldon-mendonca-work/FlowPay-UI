@@ -1,12 +1,11 @@
-
-
-import { Activity, Zap, Sun, Moon, BookOpen, GitFork, User, Building2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Zap, Sun, Moon, BookOpen, GitFork, User, Building2, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { User as UserType } from "@/lib/types";
+import type { NavAccount } from "@/types/types";
 
-interface StatusDot {
+interface StatINRot {
   label: string;
   connected: boolean;
 }
@@ -20,10 +19,10 @@ interface HealthStat {
 type AppMode = "consumer" | "company";
 
 interface TopNavProps {
-  currentUser: UserType;
-  onUserChange: (userId: string) => void;
-  users: UserType[];
-  statuses: StatusDot[];
+  navAccounts: NavAccount[];
+  selectedNavAccountId: string;
+  onNavAccountSelect: (id: string) => void;
+  statuses: StatINRot[];
   healthStats: HealthStat[];
   theme: "light" | "dark";
   onThemeToggle: () => void;
@@ -33,10 +32,102 @@ interface TopNavProps {
   onModeChange: (mode: AppMode) => void;
 }
 
+function NavAccountSwitcher({
+  navAccounts,
+  selectedNavAccountId,
+  onSelect,
+}: {
+  navAccounts: NavAccount[];
+  selectedNavAccountId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleOutsideClick(e: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  const visible = navAccounts.slice(0, 2);
+  const more = navAccounts.slice(2);
+
+  return (
+    <div className="flex items-center gap-1">
+      {visible.map((account) => (
+        <button
+          key={account.id}
+          type="button"
+          onClick={() => onSelect(account.id)}
+          className={cn(
+            "px-2.5 py-0.5 rounded text-xs font-medium transition-colors max-w-[110px] truncate",
+            selectedNavAccountId === account.id
+              ? "bg-primary/15 text-primary border border-primary/30"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"
+          )}
+          title={account.name}
+        >
+          {account.name}
+        </button>
+      ))}
+
+      {more.length > 0 && (
+        <div ref={moreRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setMoreOpen((prev) => !prev)}
+            className={cn(
+              "flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-medium transition-colors border border-transparent",
+              more.some((a) => a.id === selectedNavAccountId)
+                ? "bg-primary/15 text-primary border-primary/30"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+            )}
+          >
+            More
+            <ChevronDown className={cn("size-3 transition-transform", moreOpen && "rotate-180")} />
+          </button>
+
+          {moreOpen && (
+            <div className="absolute top-full mt-1 left-0 z-50 min-w-[160px] rounded-lg border border-border bg-card shadow-lg py-1">
+              {more.map((account) => (
+                <button
+                  key={account.id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(account.id);
+                    setMoreOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 text-xs transition-colors truncate",
+                    selectedNavAccountId === account.id
+                      ? "text-primary bg-primary/10"
+                      : "text-foreground hover:bg-accent"
+                  )}
+                  title={account.name}
+                >
+                  {account.name}
+                  <span className="ml-1.5 text-[10px] text-muted-foreground font-mono">
+                    {account.accountId}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TopNav({
-  currentUser,
-  onUserChange,
-  users,
+  navAccounts,
+  selectedNavAccountId,
+  onNavAccountSelect,
   statuses,
   healthStats,
   theme,
@@ -94,29 +185,17 @@ export function TopNav({
         </button>
       </div>
 
-      {/* User selector — only relevant in consumer mode */}
-      {appMode === "consumer" && (
+      {/* Nav account switcher — controls the right panel */}
+      {navAccounts.length > 0 && (
         <>
           <div className="w-px h-5 bg-border shrink-0" />
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-muted-foreground hidden sm:block">User:</span>
-            <div className="flex items-center gap-1">
-              {users.map((u) => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => onUserChange(u.id)}
-                  className={cn(
-                    "px-2.5 py-0.5 rounded text-xs font-medium transition-colors",
-                    currentUser.id === u.id
-                      ? "bg-primary/15 text-primary border border-primary/30"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"
-                  )}
-                >
-                  {u.name}
-                </button>
-              ))}
-            </div>
+            <span className="text-xs text-muted-foreground hidden sm:block">View:</span>
+            <NavAccountSwitcher
+              navAccounts={navAccounts}
+              selectedNavAccountId={selectedNavAccountId}
+              onSelect={onNavAccountSelect}
+            />
           </div>
         </>
       )}

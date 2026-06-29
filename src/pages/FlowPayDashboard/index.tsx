@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Activity, CreditCard, Server } from "lucide-react";
 import { TopNav } from "@/components/top-nav";
 import { SenderColumn } from "@/components/sender-column";
@@ -11,26 +11,31 @@ import { ArchitectureDialog } from "@/components/architecture-dialog";
 import {
   OFFERS,
   SENDER_TRANSACTIONS,
-  RECEIVER_TRANSACTIONS,
-  INITIAL_LIVE_ACTIVITY,
-  COMPANY_OFFERS,
   generateId,
   generateIdempotencyKey,
-  USERS,
 } from "@/lib/mock-data";
 import { buildTimelineSteps, animateTimeline } from "@/lib/timeline-utils";
+import { fetchNavAccounts } from "@/api/navAccountsAPI";
+import { useAuthStore } from "@/store/authstore";
 import type {
   User,
-  Offer,
+  Currency,
   Transaction,
   TimelineStep,
   LiveActivityEvent,
   PaymentResult,
-  CompanyOffer,
-} from "@/lib/types";
+  NavAccount,
+  ReceiverResult,
+} from "@/types/types";
 
-const SENDER_USER = USERS[0];
-const RECEIVER_USERS = USERS.slice(1);
+function deriveInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((w) => w[0] ?? "")
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 const TOP_NAV_STATUSES = [
   { label: "Kafka",            connected: true },
@@ -39,17 +44,35 @@ const TOP_NAV_STATUSES = [
 ];
 
 const INITIAL_HEALTH = {
-  paymentsToday:          1_847,
+  paymentsToday:         1_847,
   offersRedeemed:          312,
-  kafkaEventsProcessed:  14_228,
-  failedEvents:               3,
+  kafkaEventsProcessed: 14_228,
+  failedEvents:              3,
 };
 
-type Theme    = "light" | "dark";
-type AppMode  = "consumer" | "company";
+type Theme   = "light" | "dark";
+type AppMode = "consumer" | "company";
 
 export default function FlowPayDashboard() {
-  // ── Theme ────────────────────────────────────────────────────────────
+  // ── Auth / sender identity ─────────────────────────────────────────────
+  const userInfo = useAuthStore((s) => s.userInfo);
+
+  const senderUser: User = useMemo(() => {
+    if (!userInfo) {
+      // ProtectedRoute guarantees userInfo is set before we render; this is a type-safe fallback
+      return { id: "", accountId: "", name: "Loading…", avatarInitials: "…", balance: 0, currency: "INR" };
+    }
+    return {
+      id: userInfo.account_id,
+      accountId: userInfo.account_id,
+      name: userInfo.account_name,
+      avatarInitials: deriveInitials(userInfo.account_name),
+      balance: userInfo.balance,
+      currency: userInfo.currency as Currency,
+    };
+  }, [userInfo]);
+
+  // ── Theme ─────────────────────────────────────────────────────────────
   const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
@@ -68,46 +91,58 @@ export default function FlowPayDashboard() {
     });
   }
 
-  // ── View mode ────────────────────────────────────────────────────────
+  // ── App mode ──────────────────────────────────────────────────────────
   const [appMode, setAppMode] = useState<AppMode>("consumer");
 
-  // ── Modals ───────────────────────────────────────────────────────────
+  // ── Modals ────────────────────────────────────────────────────────────
   const [readmeOpen, setReadmeOpen] = useState(false);
   const [archOpen, setArchOpen] = useState(false);
 
-  // ── Company offers ───────────────────────────────────────────────────
-  const [companyOffers, setCompanyOffers] = useState<CompanyOffer[]>(COMPANY_OFFERS);
+  // ── Nav accounts (right panel / company) ──────────────────────────────
+  const [navAccountsOrdered, setNavAccountsOrdered] = useState<NavAccount[]>([]);
+  const [selectedNavAccountId, setSelectedNavAccountId] = useState<string>("");
 
-  function handleOfferCreated(offer: CompanyOffer) {
-    setCompanyOffers((prev) => [offer, ...prev]);
+  // Fetch nav accounts when appMode changes
+  useEffect(() => {
+    const type = appMode === "consumer" ? "ACCOUNT" : "COMPANY";
+    fetchNavAccounts(type).then((accounts) => {
+      setNavAccountsOrdered(accounts);
+      setSelectedNavAccountId(accounts[0]?.id ?? "");
+    });
+  }, [appMode]);
+
+  // Promote-to-front when a "More" account is selected
+  function handleNavAccountSelect(id: string) {
+    setSelectedNavAccountId(id);
+    setNavAccountsOrdered((prev) => {
+      const idx = prev.findIndex((a) => a.id === id);
+      if (idx <= 1) return prev; // already visible
+      const account = prev[idx];
+      return [account, ...prev.filter((a) => a.id !== id)];
+    });
   }
 
-  // ── Consumer payment state ───────────────────────────────────────────
-  const [currentSender, setCurrentSender] = useState<User>(SENDER_USER);
-  const [selectedReceiverId, setSelectedReceiverId] = useState<string>(RECEIVER_USERS[0].id);
+  const selectedNavAccount = navAccountsOrdered.find((a) => a.id === selectedNavAccountId);
 
+  // ── Payment receiver (independent of nav) ────────────────────────────
+  const [paymentReceiver, setPaymentReceiver] = useState<ReceiverResult | null>(null);
+
+  // ── Consumer payment state ────────────────────────────────────────────
   const [senderDelta, setSenderDelta] = useState<number>(0);
   const [receiverDelta, setReceiverDelta] = useState<number>(0);
 
   const [senderTxs, setSenderTxs] = useState<Transaction[]>(SENDER_TRANSACTIONS);
-  const [receiverTxs, setReceiverTxs] = useState<Transaction[]>(RECEIVER_TRANSACTIONS);
 
   const [timelineSteps, setTimelineSteps] = useState<TimelineStep[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [activityEvents, setActivityEvents] = useState<LiveActivityEvent[]>(INITIAL_LIVE_ACTIVITY);
+  // New activity events produced by the payment flow; fed into ReceiverColumn
+  const [newActivityEvents, setNewActivityEvents] = useState<LiveActivityEvent[]>([]);
   const [health, setHealth] = useState(INITIAL_HEALTH);
 
-  const receiver = RECEIVER_USERS.find((u) => u.id === selectedReceiverId) ?? RECEIVER_USERS[0];
-
-  function handleUserChange(userId: string) {
-    const user = USERS.find((u) => u.id === userId);
-    if (user) setCurrentSender(user);
-  }
-
   const handleSendPayment = useCallback(
-    async (amount: number, receiverId: string, offerId: string | null) => {
-      if (isProcessing) return;
+    async (amount: number, _receiverId: string, offerId: string | null) => {
+      if (isProcessing || !paymentReceiver) return;
 
       const offer = OFFERS.find((o) => o.id === offerId) ?? null;
       const steps = buildTimelineSteps(offer);
@@ -116,13 +151,14 @@ export default function FlowPayDashboard() {
       setTimelineSteps(steps);
       setSenderDelta(0);
       setReceiverDelta(0);
+      setNewActivityEvents([]);
 
-      const paymentId       = generateId("pay");
-      const traceId         = generateId("trc");
-      const requestId       = generateId("req");
-      const reservationId   = offer ? generateId("rsv") : undefined;
-      const redemptionId    = offer ? generateId("rdm") : undefined;
-      const idempotencyKey  = generateIdempotencyKey();
+      const paymentId      = generateId("pay");
+      const traceId        = generateId("trc");
+      const requestId      = generateId("req");
+      const reservationId  = offer ? generateId("rsv") : undefined;
+      const redemptionId   = offer ? generateId("rdm") : undefined;
+      const idempotencyKey = generateIdempotencyKey();
 
       const cashbackAmount =
         offer?.type === "CASHBACK"
@@ -148,18 +184,15 @@ export default function FlowPayDashboard() {
         reservationId,
         redemptionId,
         idempotencyKey,
-        senderDelta:   -netPayment,
-        receiverDelta:  netPayment,
+        senderDelta:  -netPayment,
+        receiverDelta: netPayment,
         cashbackAmount,
       };
 
       const gen = animateTimeline(steps, result, (updated) => {
         setTimelineSteps(updated);
       });
-
-      for await (const _ of gen) {
-        // each yield drives a UI update via callback
-      }
+      for await (const _ of gen) { /* each yield drives a UI update via callback */ }
 
       setSenderDelta(-netPayment);
       setReceiverDelta(netPayment + (cashbackAmount ?? 0));
@@ -170,43 +203,30 @@ export default function FlowPayDashboard() {
         {
           id: generateId("tx"),
           time: now,
-          counterparty: receiver.name,
+          counterparty: paymentReceiver.name,
           amount: netPayment,
-          currency: "USD",
+          currency: "INR",
           status: "COMPLETED",
           direction: "out",
         },
         ...prev,
       ]);
 
-      setReceiverTxs((prev) => [
-        {
-          id: generateId("rx"),
-          time: now,
-          counterparty: currentSender.name,
-          amount: netPayment,
-          currency: "USD",
-          status: "COMPLETED",
-          direction: "in",
-        },
-        ...prev,
-      ]);
-
-      const newActivities: LiveActivityEvent[] = [
+      const events: LiveActivityEvent[] = [
         {
           id: generateId("act"),
           type: "payment_received",
           amount: netPayment,
-          currency: "USD",
-          from: currentSender.name,
-          message: `Payment received from ${currentSender.name}`,
+          currency: "INR",
+          from: senderUser.name,
+          message: `Payment received from ${senderUser.name}`,
           timestamp: now,
           isNew: true,
         },
       ];
 
       if (offer) {
-        newActivities.push({
+        events.push({
           id: generateId("act"),
           type: "offer_redeemed",
           message: `Offer ${offer.code} redeemed successfully`,
@@ -216,54 +236,42 @@ export default function FlowPayDashboard() {
       }
 
       if (cashbackAmount) {
-        newActivities.push({
+        events.push({
           id: generateId("act"),
           type: "cashback_received",
           amount: cashbackAmount,
-          currency: "USD",
+          currency: "INR",
           message: `Cashback credited from ${offer!.code} offer`,
-          timestamp: new Date(now.getTime() + 1200),
+          timestamp: new Date(now.getTime() + 1_200),
           isNew: true,
         });
       }
 
-      setActivityEvents((prev) => [...newActivities, ...prev]);
+      setNewActivityEvents(events);
 
       setHealth((prev) => ({
-        paymentsToday:         prev.paymentsToday + 1,
-        offersRedeemed:        prev.offersRedeemed + (offer ? 1 : 0),
-        kafkaEventsProcessed:  prev.kafkaEventsProcessed + steps.length,
-        failedEvents:          prev.failedEvents,
+        paymentsToday:        prev.paymentsToday + 1,
+        offersRedeemed:       prev.offersRedeemed + (offer ? 1 : 0),
+        kafkaEventsProcessed: prev.kafkaEventsProcessed + steps.length,
+        failedEvents:         prev.failedEvents,
       }));
 
       setIsProcessing(false);
     },
-    [isProcessing, receiver, currentSender]
+    [isProcessing, paymentReceiver],
   );
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <TopNav
-        currentUser={currentSender}
-        onUserChange={handleUserChange}
-        users={USERS}
+        navAccounts={navAccountsOrdered}
+        selectedNavAccountId={selectedNavAccountId}
+        onNavAccountSelect={handleNavAccountSelect}
         statuses={TOP_NAV_STATUSES}
         healthStats={[
-          {
-            label: "Payments today",
-            value: health.paymentsToday,
-            icon: <CreditCard className="size-3" />,
-          },
-          {
-            label: "Kafka events",
-            value: health.kafkaEventsProcessed,
-            icon: <Activity className="size-3" />,
-          },
-          {
-            label: "Failed",
-            value: health.failedEvents,
-            icon: <Server className="size-3" />,
-          },
+          { label: "Payments today", value: health.paymentsToday,        icon: <CreditCard className="size-3" /> },
+          { label: "Kafka events",   value: health.kafkaEventsProcessed, icon: <Activity className="size-3" /> },
+          { label: "Failed",         value: health.failedEvents,          icon: <Server className="size-3" /> },
         ]}
         theme={theme}
         onThemeToggle={toggleTheme}
@@ -274,17 +282,15 @@ export default function FlowPayDashboard() {
       />
 
       {appMode === "consumer" ? (
-        /* ── Consumer View: three-column layout ── */
         <div className="flex flex-1 overflow-hidden min-w-0">
           {/* Left — Sender Wallet */}
           <div className="w-[340px] shrink-0 overflow-hidden flex flex-col">
             <SenderColumn
-              sender={currentSender}
-              receivers={RECEIVER_USERS}
+              sender={senderUser}
+              selectedReceiver={paymentReceiver}
+              onReceiverChange={setPaymentReceiver}
               offers={OFFERS}
               transactions={senderTxs}
-              selectedReceiverId={selectedReceiverId}
-              onReceiverChange={setSelectedReceiverId}
               onSendPayment={handleSendPayment}
               isProcessing={isProcessing}
               balanceDelta={senderDelta}
@@ -300,30 +306,26 @@ export default function FlowPayDashboard() {
             />
           </div>
 
-          {/* Right — Receiver Wallet */}
+          {/* Right — Receiver Wallet (controlled by nav) */}
           <div className="w-[340px] shrink-0 overflow-hidden flex flex-col">
-            <ReceiverColumn
-              receiver={receiver}
-              transactions={receiverTxs}
-              activityEvents={activityEvents}
-              balanceDelta={receiverDelta}
-            />
+            {selectedNavAccount && (
+              <ReceiverColumn
+                navAccount={selectedNavAccount}
+                newActivityEvents={newActivityEvents}
+                balanceDelta={receiverDelta}
+              />
+            )}
           </div>
         </div>
       ) : (
-        /* ── Company View: full-width dashboard ── */
         <div className="flex-1 overflow-hidden">
-          <CompanyDashboard
-            offers={companyOffers}
-            onOfferCreated={handleOfferCreated}
-          />
+          {selectedNavAccount && (
+            <CompanyDashboard selectedCompany={selectedNavAccount} />
+          )}
         </div>
       )}
 
-      {/* First-time welcome overlay */}
       <WelcomeOverlay onOpenReadme={() => setReadmeOpen(true)} />
-
-      {/* Modals */}
       <ReadmeDialog open={readmeOpen} onOpenChange={setReadmeOpen} />
       <ArchitectureDialog open={archOpen} onOpenChange={setArchOpen} />
     </div>

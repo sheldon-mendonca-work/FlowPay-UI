@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { CompanyOffer, OfferType } from "@/lib/types";
+import type { CompanyOffer, OfferType } from "@/types/types";
 import { generateId } from "@/lib/mock-data";
 
 interface CreateOfferDialogProps {

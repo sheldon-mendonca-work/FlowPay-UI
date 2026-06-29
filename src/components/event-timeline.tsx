@@ -12,7 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import type { TimelineStep, TimelineStepState } from "@/lib/types";
+import type { TimelineStep, TimelineStepState } from "@/types/types";
 
 const SERVICE_STYLES: Record<string, { label: string; className: string }> = {
   "payment-service": { label: "Payment Service", className: "bg-primary/12 text-primary border-primary/20" },

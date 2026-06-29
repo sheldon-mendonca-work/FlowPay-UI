@@ -1,5 +1,5 @@
-import type { TimelineStep, Offer, PaymentResult } from "./types";
-import { generateId, generateIdempotencyKey } from "./mock-data";
+import type { TimelineStep, Offer, PaymentResult } from "../types/types";
+import { generateId } from "./mock-data";
 
 function makeStep(
   name: string,

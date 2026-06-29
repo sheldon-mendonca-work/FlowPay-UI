@@ -2,7 +2,7 @@ export type OfferType = "DISCOUNT" | "CASHBACK";
 export type OfferStatus = "ACTIVE" | "EXHAUSTED" | "EXPIRED";
 export type TxStatus = "COMPLETED" | "PENDING" | "FAILED" | "PROCESSING";
 export type TimelineStepState = "pending" | "processing" | "success" | "failed";
-export type Currency = "USD" | "INR" | "GBP";
+export type Currency = "INR" | "INR" | "GBP";
 
 export interface Offer {
   id: string;
@@ -89,6 +89,45 @@ export interface LiveActivityEvent {
   message: string;
   timestamp: Date;
   isNew?: boolean;
+}
+
+export interface UserInfoResponse {
+  account_id: string;
+  account_name: string;
+  account_type: string;
+  balance: number;
+  currency: string;
+  allow_negative_balance: boolean;
+  user_id?: string | null;
+  role?: string | null;
+  company_id?: string | null;
+  company_name?: string | null;
+  company_business_name?: string | null;
+}
+
+export interface NavAccount {
+  id: string;
+  name: string;
+  accountId: string;
+  type: "ACCOUNT" | "COMPANY";
+  currency: Currency;
+  balance: number;
+  avatarInitials: string;
+}
+
+export interface ReceiverResult {
+  id: string;
+  name: string;
+  accountId: string;
+  currency: Currency;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
 }
 
 export interface PaymentResult {

@@ -1,28 +1,25 @@
-
-
-import { useState } from "react";
-import { Loader2, ChevronDown, Plus, X, Tag, Percent, DollarSign, ArrowRight } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Loader2, ChevronDown, Plus, X, Tag, Percent, DollarSign, ArrowRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { WalletCard } from "@/components/wallet-card";
 import { OfferModal } from "@/components/offer-modal";
 import { TransactionTable } from "@/components/transaction-table";
 import { cn } from "@/lib/utils";
-import type { User, Offer, Transaction } from "@/lib/types";
+import { searchReceivers } from "@/api/receiverSearchAPI";
+import type { User, Offer, Transaction, ReceiverResult } from "@/types/types";
 
 interface SenderColumnProps {
   sender: User;
-  receivers: User[];
+  selectedReceiver: ReceiverResult | null;
+  onReceiverChange: (receiver: ReceiverResult | null) => void;
   offers: Offer[];
   transactions: Transaction[];
-  selectedReceiverId: string;
-  onReceiverChange: (id: string) => void;
   onSendPayment: (amount: number, receiverId: string, offerId: string | null) => void;
   isProcessing: boolean;
   balanceDelta: number;
 }
 
-const CURRENCIES = ["USD", "EUR", "GBP"] as const;
+const CURRENCIES = ["INR", "EUR", "GBP"] as const;
 
 function fmt(n: number) {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -92,14 +89,7 @@ function AppliedOfferChip({
   );
 }
 
-/** Always-visible payment summary — 3 states: no offer / discount / cashback */
-function PaymentSummary({
-  amount,
-  offer,
-}: {
-  amount: number;
-  offer: Offer | null;
-}) {
+function PaymentSummary({ amount, offer }: { amount: number; offer: Offer | null }) {
   const discountAmount =
     offer?.type === "DISCOUNT"
       ? offer.benefitAmount < 20
@@ -126,59 +116,34 @@ function PaymentSummary({
       </div>
 
       <div className="px-4 py-3 flex flex-col divide-y divide-border/50">
-        {/* Amount row */}
         <div className="flex items-center justify-between py-1.5">
           <span className="text-xs text-muted-foreground">Amount</span>
           <span className="text-xs font-mono text-foreground tabular-nums">{fmt(amount)}</span>
         </div>
-
-        {/* Discount row — always shown */}
         <div className="flex items-center justify-between py-1.5">
           <span className="text-xs text-muted-foreground">Discount</span>
-          <span
-            className={cn(
-              "text-xs font-mono tabular-nums",
-              discountAmount > 0 ? "text-info font-semibold" : "text-muted-foreground"
-            )}
-          >
+          <span className={cn("text-xs font-mono tabular-nums", discountAmount > 0 ? "text-info font-semibold" : "text-muted-foreground")}>
             {discountAmount > 0 ? `-${fmt(discountAmount)}` : fmt(0)}
           </span>
         </div>
-
-        {/* Cashback row — always shown */}
         <div className="flex items-center justify-between py-1.5">
           <span className="text-xs text-muted-foreground">Cashback</span>
-          <span
-            className={cn(
-              "text-xs font-mono tabular-nums",
-              cashbackAmount > 0 ? "text-success font-semibold" : "text-muted-foreground"
-            )}
-          >
+          <span className={cn("text-xs font-mono tabular-nums", cashbackAmount > 0 ? "text-success font-semibold" : "text-muted-foreground")}>
             {cashbackAmount > 0 ? `+${fmt(cashbackAmount)}` : fmt(0)}
           </span>
         </div>
-
-        {/* Divider before totals */}
         <div className="flex items-center justify-between py-1.5">
           <span className="text-xs font-semibold text-foreground">You Pay</span>
-          <span className="text-xs font-mono font-bold text-foreground tabular-nums">
-            {fmt(youPay)}
-          </span>
+          <span className="text-xs font-mono font-bold text-foreground tabular-nums">{fmt(youPay)}</span>
         </div>
-
         <div className="flex items-center justify-between py-1.5">
           <span className="text-xs text-muted-foreground">Receiver Gets</span>
-          <span className="text-xs font-mono text-foreground tabular-nums">
-            {fmt(receiverGets)}
-          </span>
+          <span className="text-xs font-mono text-foreground tabular-nums">{fmt(receiverGets)}</span>
         </div>
-
         {cashbackAmount > 0 && (
           <div className="flex items-center justify-between py-1.5">
             <span className="text-xs text-muted-foreground">Expected Cashback</span>
-            <span className="text-xs font-mono text-success font-semibold tabular-nums">
-              {fmt(cashbackAmount)}
-            </span>
+            <span className="text-xs font-mono text-success font-semibold tabular-nums">{fmt(cashbackAmount)}</span>
           </div>
         )}
       </div>
@@ -186,19 +151,175 @@ function PaymentSummary({
   );
 }
 
+function ReceiverSearchCombobox({
+  selected,
+  onSelect,
+}: {
+  selected: ReceiverResult | null;
+  onSelect: (r: ReceiverResult | null) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ReceiverResult[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const runSearch = useCallback(async (q: string, p: number, append = false) => {
+    setIsLoading(true);
+    const res = await searchReceivers(q, p, 5);
+    setResults((prev) => (append ? [...prev, ...res.items] : res.items));
+    setHasMore(res.hasMore);
+    setIsLoading(false);
+  }, []);
+
+  // Debounced search on query change
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      setPage(1);
+      runSearch(query, 1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query, isOpen, runSearch]);
+
+  // Load initial results when opening
+  useEffect(() => {
+    if (isOpen) {
+      setPage(1);
+      runSearch(query, 1);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Click-outside dismiss
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
+  function openDropdown() {
+    setIsOpen(true);
+    setQuery("");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function handleSelect(r: ReceiverResult) {
+    onSelect(r);
+    setIsOpen(false);
+    setQuery("");
+  }
+
+  function handleLoadMore() {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    runSearch(query, nextPage, true);
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={openDropdown}
+        className={cn(
+          "w-full h-9 rounded-md border border-input bg-input text-sm px-3 pr-8 text-left flex items-center transition-colors",
+          "focus:outline-none focus:ring-1 focus:ring-ring",
+          selected ? "text-foreground" : "text-muted-foreground"
+        )}
+      >
+        <span className="flex-1 truncate">
+          {selected ? selected.name : "Search receiver..."}
+        </span>
+        {selected ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onSelect(null); }}
+            className="absolute right-2.5 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Clear receiver"
+          >
+            <X className="size-3.5" />
+          </button>
+        ) : (
+          <Search className="absolute right-2.5 size-3.5 text-muted-foreground pointer-events-none" />
+        )}
+      </button>
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+          {/* Search input */}
+          <div className="p-2 border-b border-border/60">
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Name or account ID…"
+              className="w-full h-8 rounded-md border border-input bg-input text-xs text-foreground px-2.5 focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* Results */}
+          <div className="max-h-[200px] overflow-y-auto">
+            {isLoading && results.length === 0 && (
+              <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                Searching…
+              </div>
+            )}
+            {!isLoading && results.length === 0 && (
+              <div className="py-4 text-center text-xs text-muted-foreground">No results found</div>
+            )}
+            {results.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => handleSelect(r)}
+                className={cn(
+                  "w-full flex items-center justify-between px-3 py-2 text-left transition-colors hover:bg-accent",
+                  selected?.id === r.id && "bg-primary/8"
+                )}
+              >
+                <span className="text-xs font-medium text-foreground">{r.name}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{r.accountId}</span>
+              </button>
+            ))}
+            {hasMore && (
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={isLoading}
+                className="w-full py-2 text-center text-[11px] text-primary hover:text-primary/80 border-t border-border/60 transition-colors disabled:opacity-50"
+              >
+                {isLoading ? "Loading…" : "Load more"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SenderColumn({
   sender,
-  receivers,
+  selectedReceiver,
+  onReceiverChange,
   offers,
   transactions,
-  selectedReceiverId,
-  onReceiverChange,
   onSendPayment,
   isProcessing,
   balanceDelta,
 }: SenderColumnProps) {
   const [amount, setAmount] = useState("250.00");
-  const [currency, setCurrency] = useState<string>("USD");
+  const [currency, setCurrency] = useState<string>("INR");
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
   const [offerModalOpen, setOfferModalOpen] = useState(false);
 
@@ -216,30 +337,26 @@ export function SenderColumn({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!parsedAmount || isProcessing) return;
-    onSendPayment(parsedAmount, selectedReceiverId, selectedOfferId);
+    if (!parsedAmount || isProcessing || !selectedReceiver) return;
+    onSendPayment(parsedAmount, selectedReceiver.id, selectedOfferId);
   }
 
+  const canPay = parsedAmount > 0 && !!selectedReceiver && !isProcessing;
+
   return (
-    /* Full-viewport-height column — flex col, nothing overflows the column */
     <div className="flex flex-col h-full border-r border-border overflow-hidden pb-8">
 
-      {/* ── Column header ── */}
       <div className="px-4 py-3 border-b border-border shrink-0">
         <h2 className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
           Sender Wallet
         </h2>
       </div>
 
-      {/* ── Upper scrollable area: wallet + form + summary ── */}
-      {/* This area scrolls but transactions are separate below */}
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="flex flex-col gap-3 p-4 pb-0">
 
-          {/* Wallet card */}
           <WalletCard user={sender} variant="sender" balanceDelta={balanceDelta} />
 
-          {/* Send Payment form */}
           <div className="rounded-lg border border-border bg-card">
             <div className="px-4 py-2.5 border-b border-border/60">
               <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
@@ -248,25 +365,20 @@ export function SenderColumn({
             </div>
 
             <form id="payment-form" onSubmit={handleSubmit} className="flex flex-col gap-3.5 p-4">
-              {/* Receiver */}
+              {/* Receiver search */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                   Receiver
                 </label>
-                <div className="relative">
-                  <select
-                    value={selectedReceiverId}
-                    onChange={(e) => onReceiverChange(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-input text-sm text-foreground px-3 pr-8 appearance-none focus:outline-none focus:ring-1 focus:ring-ring transition-colors cursor-pointer"
-                  >
-                    {receivers.map((r) => (
-                      <option key={r.id} value={r.id} className="bg-card">
-                        {r.name} — {r.accountId}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                </div>
+                <ReceiverSearchCombobox
+                  selected={selectedReceiver}
+                  onSelect={onReceiverChange}
+                />
+                {selectedReceiver && (
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {selectedReceiver.accountId} · {selectedReceiver.currency}
+                  </span>
+                )}
               </div>
 
               {/* Amount + Currency */}
@@ -356,20 +468,18 @@ export function SenderColumn({
             </form>
           </div>
 
-          {/* Payment Summary — always rendered */}
           <PaymentSummary amount={parsedAmount} offer={selectedOffer} />
 
-          {/* Gap before sticky pay button */}
           <div className="h-1" />
         </div>
       </div>
 
-      {/* ── Sticky pay button ── */}
+      {/* Sticky pay button */}
       <div className="px-3 py-2.5 border-t border-border bg-card shrink-0">
         <Button
           type="submit"
           form="payment-form"
-          disabled={isProcessing || !parsedAmount}
+          disabled={!canPay}
           className="w-full h-12 font-bold text-[15px] tracking-wide"
           size="lg"
         >
@@ -378,6 +488,8 @@ export function SenderColumn({
               <Loader2 data-icon="inline-start" className="animate-spin" />
               Processing...
             </>
+          ) : !selectedReceiver ? (
+            "Select a receiver"
           ) : parsedAmount > 0 ? (
             selectedOffer?.type === "DISCOUNT"
               ? `Pay ${fmt(netAmount)}`
@@ -386,19 +498,18 @@ export function SenderColumn({
             "Enter an amount"
           )}
         </Button>
-        {!parsedAmount && (
+        {!selectedReceiver && !isProcessing && (
           <p className="text-[10px] text-center text-muted-foreground mt-1.5">
-            Enter a payment amount above
+            Search and select a receiver above
           </p>
         )}
       </div>
 
-      {/* ── Fixed-height scrollable transactions ── */}
+      {/* Fixed-height scrollable transactions */}
       <div className="shrink-0 border-t border-border flex flex-col" style={{ height: "220px" }}>
         <TransactionTable transactions={transactions} fixedHeight />
       </div>
 
-      {/* Offer selection modal */}
       <OfferModal
         open={offerModalOpen}
         onOpenChange={setOfferModalOpen}

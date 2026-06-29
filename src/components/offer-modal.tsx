@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { Offer } from "@/lib/types";
+import type { Offer } from "@/types/types";
 
 interface OfferModalProps {
   open: boolean;

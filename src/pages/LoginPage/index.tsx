@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
   Moon,
@@ -6,23 +7,10 @@ import {
   Sparkles,
   BookOpen,
   X,
-  Activity,
-  Layers,
-  Workflow,
-  ShieldCheck,
-  CircuitBoard,
-  Wallet,
 } from "lucide-react";
 import Github from '@/assets/github.svg?react';
 import Linkedin from '@/assets/linkedin.svg?react';
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/home-select";
 import {
   Dialog,
   DialogContent,
@@ -30,9 +18,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import type { UserType } from "@/lib/user-types";
+import type { UserType } from "@/types/user-types";
 import { LoadingScreen } from "@/components/login-loading-screen";
 import { LogoMark } from "@/components/logo-mark";
+import { LeftPanel } from "./leftPanel";
+import { RightPanel } from "./rightPanel";
+import { useAccountsListQuery } from "@/api/accountsAPI";
+import { loginDefault } from "@/api/authAPI";
+import { useAuthStore } from "@/store/authstore";
+import { type LoginCompanyUser, type LoginAccount } from "@/types/login-page-types";
 
 
 const ARCH_FLOW = [
@@ -47,13 +41,61 @@ const ARCH_FLOW = [
 /* ---------------- root ---------------- */
 
 function LoginPage() {
-  const [mode, setMode] = useState<UserType>("USER");
-  const [selectedUser, setSelectedUser] = useState<string>("");
-  const [selectedCompany, setSelectedCompany] = useState<string>("");
-  const [readmeOpen, setReadmeOpen] = useState(false);
-  const [firstVisit, setFirstVisit] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<UserType>("ACCOUNT");
+  const [selectedAccount, setSelectedAccount] = useState<string>("");
+  const [selectedCompanyUser, setSelectedCompanyUser] = useState<string>("");
+  const [userList, setUserList] = useState<LoginCompanyUser[]>([]);
+  const [accountList, setAccountList] = useState<LoginAccount[]>([]);
+  const [readmeOpen, setReadmeOpen] = useState<boolean>(false);
+  const [firstVisit, setFirstVisit] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+
+  const canSubmit = mode === "ACCOUNT" ? !!selectedAccount : !!selectedCompanyUser;
+  
+  // Pass enabled:false here to defer fetching until a condition is met,
+  // e.g. useUserListQuery({ enabled: !!someToken }).
+  // Default (true) fetches immediately after mount.
+
+
+  const {
+    data: fetchedAccounts,
+    isLoading: accountsLoading,
+    isError: accountsIsError,
+    error: accountsError,
+    refetch: refetchAccounts,
+  } = useAccountsListQuery();
+
+  const isListLoading = accountsLoading;
+
+  const fetchError =
+    (accountsIsError && (accountsError instanceof Error ? accountsError.message : 'Failed to load accounts')) ||
+    null;
+  // Sync + transform fetched data into typed UI state.
+  // This is the right place to reshape API fields before they reach the view.
+
+  useEffect(() => {
+    if (!fetchedAccounts) return;
+    setUserList(
+      fetchedAccounts.filter(account => (account.account_type || "").toUpperCase() === "USER").map((a) => ({
+        accountID: a.account_id,
+        accountName: a.account_name,
+        displayName: a.display_name,
+        companyName: a.company_name,
+        description: a.description,
+      })),
+    );
+    setAccountList(
+      fetchedAccounts.filter(account => (account.account_type || "").toUpperCase() === "ACCOUNT").map((a) => ({
+        accountID: a.account_id,
+        accountName: a.account_name,
+        displayName: a.display_name,
+        description: a.description,
+      })),
+    );
+  }, [fetchedAccounts]);
 
   // theme init
   useEffect(() => {
@@ -79,18 +121,31 @@ function LoginPage() {
     if (!localStorage.getItem("fp_seen")) setFirstVisit(true);
   }, []);
 
+  
+  const handleRetry = () => {
+    if (accountsIsError) refetchAccounts();
+  };
+
   const dismissFirstVisit = (openReadme = false) => {
     localStorage.setItem("fp_seen", "1");
     setFirstVisit(false);
     if (openReadme) setReadmeOpen(true);
   };
 
-  const canSubmit = mode === "USER" ? !!selectedUser : !!selectedCompany;
-
-  const handleEnter = () => {
+  const handleEnter = async () => {
     if (!canSubmit) return;
+    const accountId = mode === "ACCOUNT" ? selectedAccount : selectedCompanyUser;
     setLoading(true);
-    setTimeout(() => setLoading(false), 2200);
+    setLoginError(null);
+    try {
+      const auth = await loginDefault(accountId, mode as "ACCOUNT" | "USER");
+      useAuthStore.getState().setTokens(auth.access_token, auth.refresh_token);
+      navigate("/payment");
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -106,20 +161,23 @@ function LoginPage() {
       </button>
 
       <main className="mx-auto grid min-h-dvh w-full max-w-[1600px] grid-cols-1 lg:grid-cols-[1fr_1fr] xl:grid-cols-[1fr_1fr]">
-        <LeftPanel />
+        <LeftPanel ARCH_FLOW={ARCH_FLOW}/>
         <RightPanel
           mode={mode}
           setMode={setMode}
-          companyList={[]}
-          userList={[]}
-          selectedUser={selectedUser}
-          setSelectedUser={setSelectedUser}
-          selectedCompany={selectedCompany}
-          setSelectedCompany={setSelectedCompany}
+          userList={userList}
+          accountList={accountList}
+          selectedAccount={selectedAccount}
+          setSelectedAccount={setSelectedAccount}
+          selectedCompanyUser={selectedCompanyUser}
+          setSelectedCompanyUser={setSelectedCompanyUser}
           canSubmit={canSubmit}
           onEnter={handleEnter}
           onOpenReadme={() => setReadmeOpen(true)}
           readmeHighlighted={firstVisit}
+          isLoading={isListLoading}
+          fetchError={loginError ?? fetchError}
+          onRetry={loginError ? undefined : handleRetry}
         />
       </main>
 
@@ -138,372 +196,6 @@ function LoginPage() {
     </div>
   );
 }
-
-/* ---------------- left panel ---------------- */
-
-function LeftPanel() {
-  return (
-    <section className="relative isolate flex flex-col justify-between overflow-hidden border-b border-border lg:border-b-0 lg:border-r">
-      <div className="absolute inset-0 -z-10 bg-grid opacity-60" />
-      <div className="absolute inset-0 -z-10 bg-radial-fade" />
-
-      {/* Logo */}
-      <header className="flex items-center gap-3 px-6 pt-6 sm:px-10 sm:pt-10">
-        <LogoMark className="h-9 w-9" />
-        <span className="font-display text-xl font-bold tracking-tight">
-          Flow<span className="text-gradient-brand">Pay</span>
-        </span>
-        <span className="ml-2 hidden rounded-full border border-border bg-card/60 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground sm:inline">
-          v1.0 · sandbox
-        </span>
-      </header>
-
-      <div className="relative px-6 py-10 sm:px-10 lg:py-16 xl:px-16">
-        <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 font-mono text-[11px] uppercase tracking-widest text-muted-foreground backdrop-blur">
-          <span className="h-1.5 w-1.5 animate-ledger-tick rounded-full bg-[color:var(--accent-cyan)]" />
-          Distributed Systems Portfolio
-        </p>
-        <h1 className="font-display text-3xl font-bold leading-[1.05] tracking-tight sm:text-4xl lg:text-5xl xl:text-6xl">
-          Payments that flow.
-          <br />
-          <span className="text-gradient-brand">Systems that scale.</span>
-        </h1>
-        <p className="mt-5 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-          A production-grade distributed payment platform built to demonstrate
-          event-driven architecture, transactional consistency, offer engines,
-          ledger systems and real-time observability.
-        </p>
-
-        <SystemIllustration />
-      </div>
-
-      <ArchPreviewCard />
-    </section>
-  );
-}
-
-/* ---------------- right panel ---------------- */
-
-function RightPanel(props: {
-  mode: UserType;
-  setMode: (m: UserType) => void;
-  selectedUser: string;
-  setSelectedUser: (v: string) => void;
-  selectedCompany: string;
-  setSelectedCompany: (v: string) => void;
-  canSubmit: boolean;
-  onEnter: () => void;
-  userList: any[];
-  companyList: any[];
-  onOpenReadme: () => void;
-  readmeHighlighted: boolean;
-}) {
-  const {
-    mode,
-    setMode,
-    selectedUser,
-    setSelectedUser,
-    selectedCompany,
-    setSelectedCompany,
-    canSubmit,
-    onEnter,
-    onOpenReadme,
-    userList,
-    companyList,
-    readmeHighlighted,
-  } = props;
-
-  return (
-    <section className="relative flex items-center justify-center px-5 py-12 sm:px-8 lg:px-14">
-      <div className="w-full max-w-md animate-fade-up">
-        <div className="rounded-2xl border border-border bg-card/80 p-6 shadow-[0_30px_80px_-30px_color-mix(in_oklch,var(--brand)_30%,transparent)] backdrop-blur sm:p-8">
-          <div className="mb-6">
-            <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-              Welcome to FlowPay
-            </h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              Choose a persona to explore the system
-            </p>
-          </div>
-
-          {/* Persona toggle */}
-          <div
-            role="tablist"
-            aria-label="Persona"
-            className="relative mb-6 grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted/60 p-1"
-          >
-            {(["USER", "COMPANY"] as const).map((m) => {
-              const active = mode === m;
-              return (
-                <button
-                  key={m}
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setMode(m)}
-                  className={[
-                    "relative z-10 h-10 rounded-lg text-sm font-medium capitalize transition-colors",
-                    active
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
-                >
-                  {m}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Form */}
-          {mode === "USER" ? (
-            <PersonaForm
-              key="USER"
-              label="Demo user"
-              placeholder="Select a demo user"
-              value={selectedUser}
-              onChange={setSelectedUser}
-              options={userList.map((u) => ({
-                value: u.id,
-                label: u.name,
-                hint: `${u.email} · ${u.balance}`,
-              }))}
-            />
-          ) : (
-            <PersonaForm
-              key="company"
-              label="Demo company"
-              placeholder="Select a demo company"
-              value={selectedCompany}
-              onChange={setSelectedCompany}
-              options={companyList.map((c) => ({
-                value: c.id,
-                label: c.name,
-                hint: `${c.offers} offers · ${c.status}`,
-              }))}
-            />
-          )}
-
-          <p className="mt-3 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5 text-[color:var(--accent-cyan)]" />
-            No password required · sandbox environment
-          </p>
-
-          <Button
-            onClick={onEnter}
-            disabled={!canSubmit}
-            className="mt-6 h-12 w-full gap-2 bg-[color:var(--brand)] text-[color:var(--brand-foreground)] hover:bg-[color:var(--brand)]/90 disabled:opacity-50"
-          >
-            {mode === "USER" ? "Enter Sandbox" : "Manage Offers"}
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-
-          <div className="mt-5 text-center">
-            <button
-              type="button"
-              onClick={onOpenReadme}
-              data-readme-btn
-              className={[
-                "group inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-all hover:text-foreground",
-                readmeHighlighted
-                  ? "relative z-[60] bg-card ring-2 ring-[color:var(--accent-cyan)] ring-offset-2 ring-offset-background"
-                  : "",
-              ].join(" ")}
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              New here?{" "}
-              <span className="underline-offset-4 group-hover:underline">
-                Read about the project
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <p className="mt-5 text-center font-mono text-[11px] text-muted-foreground">
-          intentionally not a consumer banking app · engineering demo
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function PersonaForm({
-  label,
-  placeholder,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string; hint: string }[];
-}) {
-  return (
-    <div className="animate-fade-up">
-      <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </label>
-      <Select value={value || null} onValueChange={(v) => onChange(v ?? "")}>
-        <SelectTrigger className="h-12 w-full bg-background">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              <div className="flex flex-col">
-                <span className="font-medium">{o.label}</span>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {o.hint}
-                </span>
-              </div>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-/* ---------------- illustration ---------------- */
-
-function SystemIllustration() {
-  return (
-    <div className="relative mt-10 hidden h-56 w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card/40 backdrop-blur sm:block lg:h-64">
-      {/* event stream lanes */}
-      {[20, 50, 80].map((top, i) => (
-        <div
-          key={top}
-          className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-[color:var(--accent-cyan)]/40 to-transparent"
-          style={{ top: `${top}%` }}
-        >
-          <span
-            className="absolute -top-[3px] block h-1.5 w-10 rounded-full bg-[color:var(--accent-cyan)] animate-stream"
-            style={{ animationDelay: `${i * 0.7}s` }}
-          />
-          <span
-            className="absolute -top-[3px] block h-1.5 w-6 rounded-full bg-[color:var(--brand)] animate-stream"
-            style={{ animationDelay: `${i * 0.7 + 1.4}s` }}
-          />
-        </div>
-      ))}
-
-      {/* nodes */}
-      <Node
-        icon={<Wallet className="h-4 w-4" />}
-        label="wallet.a"
-        className="left-[6%] top-[18%] animate-float"
-        style={{ animationDelay: "0s" }}
-      />
-      <Node
-        icon={<CircuitBoard className="h-4 w-4" />}
-        label="payment.svc"
-        accent
-        className="left-1/2 top-[42%] -translate-x-1/2 animate-float"
-        style={{ animationDelay: "1.5s" }}
-      />
-      <Node
-        icon={<Layers className="h-4 w-4" />}
-        label="ledger.blk"
-        className="right-[6%] top-[18%] animate-float"
-        style={{ animationDelay: "0.8s" }}
-      />
-      <Node
-        icon={<Wallet className="h-4 w-4" />}
-        label="wallet.b"
-        className="right-[10%] bottom-[14%] animate-float"
-        style={{ animationDelay: "2.2s" }}
-      />
-      <Node
-        icon={<Workflow className="h-4 w-4" />}
-        label="offer.svc"
-        className="left-[10%] bottom-[14%] animate-float"
-        style={{ animationDelay: "1.1s" }}
-      />
-
-      {/* corner badge */}
-      <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-border bg-background/70 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur">
-        <span className="h-1.5 w-1.5 animate-ledger-tick rounded-full bg-emerald-400" />
-        live · 12.4k evt/s
-      </div>
-    </div>
-  );
-}
-
-function Node({
-  icon,
-  label,
-  className = "",
-  style,
-  accent,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  className?: string;
-  style?: React.CSSProperties;
-  accent?: boolean;
-}) {
-  return (
-    <div
-      className={`absolute flex items-center gap-2 rounded-xl border border-border bg-background/80 px-2.5 py-1.5 shadow-sm backdrop-blur ${className}`}
-      style={style}
-    >
-      <span
-        className={`relative grid h-7 w-7 place-items-center rounded-md ${
-          accent
-            ? "bg-[color:var(--brand)] text-[color:var(--brand-foreground)]"
-            : "bg-muted text-foreground"
-        }`}
-      >
-        {icon}
-        {accent && (
-          <span className="absolute inset-0 rounded-md bg-[color:var(--brand)]/40 animate-pulse-ring" />
-        )}
-      </span>
-      <span className="font-mono text-[11px] tracking-tight">{label}</span>
-    </div>
-  );
-}
-
-/* ---------------- arch preview card ---------------- */
-
-function ArchPreviewCard() {
-  return (
-    <div className="mx-6 mb-6 hidden sm:mx-10 sm:mb-10 md:block xl:mx-16">
-      <div className="rounded-xl border border-border bg-card/70 p-4 backdrop-blur">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="h-3.5 w-3.5 text-[color:var(--accent-cyan)]" />
-            <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-              Architecture · request flow
-            </span>
-          </div>
-          <span className="font-mono text-[10px] text-muted-foreground">~p99 84ms</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {ARCH_FLOW.map((step, i) => (
-            <div key={step} className="flex items-center gap-2">
-              <span
-                className={[
-                  "rounded-md border px-2.5 py-1 font-mono text-[11px]",
-                  i === 2
-                    ? "border-[color:var(--accent-cyan)]/40 bg-[color:var(--accent-cyan)]/10 text-foreground"
-                    : "border-border bg-background/60 text-foreground",
-                ].join(" ")}
-              >
-                {step}
-              </span>
-              {i < ARCH_FLOW.length - 1 && (
-                <ArrowRight className="h-3 w-3 text-muted-foreground" />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- footer ---------------- */
 
 function Footer() {
   return (
@@ -541,7 +233,6 @@ function Footer() {
   );
 }
 
-/* ---------------- readme modal ---------------- */
 
 function ReadmeDialog({
   open,
@@ -694,7 +385,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-/* ---------------- first-visit overlay ---------------- */
 
 function FirstVisitOverlay({
   onOpenReadme,

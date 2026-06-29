@@ -2,7 +2,7 @@
 
 import { Activity, BarChart3, Zap, AlertTriangle } from "lucide-react";
 import { EventTimeline } from "@/components/event-timeline";
-import type { TimelineStep } from "@/lib/types";
+import type { TimelineStep } from "@/types/types";
 
 interface KafkaStats {
   paymentsToday: number;

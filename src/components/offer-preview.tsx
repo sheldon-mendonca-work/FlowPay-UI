@@ -2,7 +2,7 @@
 
 import { Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Offer } from "@/lib/types";
+import type { Offer } from "@/types/types";
 
 interface OfferPreviewProps {
   offer: Offer | null;
