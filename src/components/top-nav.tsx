@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Zap, Sun, Moon, BookOpen, GitFork, User, Building2, ChevronDown } from "lucide-react";
+import { Zap, Sun, Moon, BookOpen, GitFork, User, Building2, ChevronDown, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { NavAccount } from "@/types/types";
 
 interface StatINRot {
   label: string;
@@ -18,8 +17,16 @@ interface HealthStat {
 
 type AppMode = "consumer" | "company";
 
+// The switcher only ever renders id/name/paymentHandle — it doesn't care
+// whether the underlying entity is a consumer NavAccount or a NavCompany.
+export interface NavSwitcherItem {
+  id: string;
+  name: string;
+  paymentHandle: string;
+}
+
 interface TopNavProps {
-  navAccounts: NavAccount[];
+  navAccounts: NavSwitcherItem[];
   selectedNavAccountId: string;
   onNavAccountSelect: (id: string) => void;
   statuses: StatINRot[];
@@ -30,6 +37,7 @@ interface TopNavProps {
   onOpenArchitecture: () => void;
   appMode: AppMode;
   onModeChange: (mode: AppMode) => void;
+  onLogout: () => void;
 }
 
 function NavAccountSwitcher({
@@ -37,7 +45,7 @@ function NavAccountSwitcher({
   selectedNavAccountId,
   onSelect,
 }: {
-  navAccounts: NavAccount[];
+  navAccounts: NavSwitcherItem[];
   selectedNavAccountId: string;
   onSelect: (id: string) => void;
 }) {
@@ -112,7 +120,7 @@ function NavAccountSwitcher({
                 >
                   {account.name}
                   <span className="ml-1.5 text-[10px] text-muted-foreground font-mono">
-                    {account.accountId}
+                    {account.paymentHandle}
                   </span>
                 </button>
               ))}
@@ -136,6 +144,7 @@ export function TopNav({
   onOpenArchitecture,
   appMode,
   onModeChange,
+  onLogout,
 }: TopNavProps) {
   return (
     <header className="h-12 border-b border-border bg-card flex items-center px-4 gap-3 shrink-0 z-10">
@@ -265,6 +274,17 @@ export function TopNav({
           aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         >
           {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onLogout}
+          className="h-7 px-2.5 text-xs gap-1.5 text-muted-foreground hover:text-destructive"
+          aria-label="Log out"
+        >
+          <LogOut className="size-3.5" />
+          <span className="hidden sm:block">Logout</span>
         </Button>
       </div>
     </header>

@@ -7,7 +7,7 @@ export interface DefaultAccount {
   account_name: string;
   currency: string;
   account_type: string;
-  display_name: string;
+  payment_handle: string;
   company_name: string;
   description: string;
 }

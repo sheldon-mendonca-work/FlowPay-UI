@@ -47,7 +47,7 @@ export function WalletCard({ user, variant = "sender", balanceDelta }: WalletCar
               {variant === "sender" ? "SENDER" : "RECEIVER"}
             </span>
           </div>
-          <span className="text-xs text-muted-foreground font-mono">{user.accountId}</span>
+          <span className="text-xs text-muted-foreground font-mono">{user.paymentHandle}</span>
         </div>
       </div>
 

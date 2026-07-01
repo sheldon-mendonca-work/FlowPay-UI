@@ -1,7 +1,7 @@
 export interface LoginCompanyUser {
     accountID: string;
     accountName: string;
-    displayName: string;
+    paymentHandle: string;
     companyName: string;
     description: string;
 }
@@ -9,7 +9,7 @@ export interface LoginCompanyUser {
 export const defaultLoginCompanyUser: LoginCompanyUser = {
     accountID: "",
     accountName: "",
-    displayName: "",
+    paymentHandle: "",
     companyName: "",
     description: "",
 };
@@ -18,7 +18,7 @@ export const defaultLoginCompanyUser: LoginCompanyUser = {
 export interface LoginAccount {
     accountID: string;
     accountName: string;
-    displayName: string;
+    paymentHandle: string;
     description: string;
     
 }
@@ -26,6 +26,6 @@ export interface LoginAccount {
 export const defaultLoginAccount: LoginAccount = {
     accountID: "",
     accountName: "",
-    displayName: "",
+    paymentHandle: "",
     description: "",
 };

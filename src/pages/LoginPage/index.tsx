@@ -27,6 +27,7 @@ import { useAccountsListQuery } from "@/api/accountsAPI";
 import { loginDefault } from "@/api/authAPI";
 import { useAuthStore } from "@/store/authstore";
 import { type LoginCompanyUser, type LoginAccount } from "@/types/login-page-types";
+import { fetchUserInfo } from "@/api/userInfoAPI";
 
 
 const ARCH_FLOW = [
@@ -82,7 +83,7 @@ function LoginPage() {
       fetchedAccounts.filter(account => (account.account_type || "").toUpperCase() === "USER").map((a) => ({
         accountID: a.account_id,
         accountName: a.account_name,
-        displayName: a.display_name,
+        paymentHandle: a.payment_handle,
         companyName: a.company_name,
         description: a.description,
       })),
@@ -91,7 +92,7 @@ function LoginPage() {
       fetchedAccounts.filter(account => (account.account_type || "").toUpperCase() === "ACCOUNT").map((a) => ({
         accountID: a.account_id,
         accountName: a.account_name,
-        displayName: a.display_name,
+        paymentHandle: a.payment_handle,
         description: a.description,
       })),
     );
@@ -120,6 +121,28 @@ function LoginPage() {
     if (typeof window === "undefined") return;
     if (!localStorage.getItem("fp_seen")) setFirstVisit(true);
   }, []);
+
+  useEffect(() => {
+    const fpAuthToken = localStorage.getItem("fp_auth");
+    if (!fpAuthToken) return;
+
+    const { state } = JSON.parse(fpAuthToken);
+    const { accessToken, refreshToken } = state;
+    if (!accessToken) return;
+
+    setLoading(true);
+    const { setUserInfo, clearAuth } = useAuthStore.getState();
+    fetchUserInfo()
+      .then((info) => {
+        setUserInfo(info);
+        useAuthStore.getState().setTokens(accessToken, refreshToken);
+        navigate("/payment");
+      })
+      .catch(() => {
+        clearAuth();
+        setLoading(false);
+      });
+  }, [navigate]);
 
   
   const handleRetry = () => {

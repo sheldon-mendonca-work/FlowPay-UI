@@ -16,7 +16,6 @@ interface AuthStoreType {
   accessToken: string | null;
   refreshToken: string | null;
   userInfo: UserInfoResponse | null;
-  _hydrated: boolean;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUserInfo: (info: UserInfoResponse) => void;
   clearAuth: () => void;
@@ -31,7 +30,6 @@ export const useAuthStore = create<AuthStoreType>()(
       accessToken: null,
       refreshToken: null,
       userInfo: null,
-      _hydrated: false,
       setTokens: (accessToken, refreshToken) => {
         _cachedAccessToken = accessToken;
         set({ accessToken, refreshToken });
@@ -44,7 +42,6 @@ export const useAuthStore = create<AuthStoreType>()(
     }),
     {
       name: 'fp_auth',
-      // userInfo and _hydrated are session-only — not persisted
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
@@ -55,7 +52,6 @@ export const useAuthStore = create<AuthStoreType>()(
         if (state?.accessToken) {
           _cachedAccessToken = state.accessToken;
         }
-        useAuthStore.setState({ _hydrated: true });
       },
     },
   ),

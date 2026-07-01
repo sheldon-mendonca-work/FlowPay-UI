@@ -1,7 +1,8 @@
 
 
-import { useState } from "react";
-import { ChevronRight, ChevronLeft, Check, Zap, Building2, CalendarDays } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useSnackbar } from "notistack";
+import { ChevronRight, ChevronLeft, Check, Zap, Building2, CalendarDays, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,16 +11,18 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { CompanyOffer, OfferType } from "@/types/types";
-import { generateId } from "@/lib/mock-data";
+import type { OfferType } from "@/types/types";
+import { createOffer, companyOffersQueryKey, companyOffersSummaryQueryKey } from "@/api/companyOffersAPI";
+import { useIdempotentMutation } from "@/hooks/useIdempotentMutation";
 
 interface CreateOfferDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (offer: CompanyOffer) => void;
+  companyName: string;
+  companyId: string;
 }
 
-type OfferFormState = {
+export type OfferFormState = {
   // Step 1
   code: string;
   type: OfferType;
@@ -136,46 +139,65 @@ const DEFAULTS: OfferFormState = {
   initialBudget: "5000",
 };
 
-export function CreateOfferDialog({ open, onOpenChange, onCreated }: CreateOfferDialogProps) {
+export function CreateOfferDialog({ open, onOpenChange, companyName, companyId }: CreateOfferDialogProps) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<OfferFormState>(DEFAULTS);
+  const { enqueueSnackbar } = useSnackbar();
+
+  const { mutate, isProcessing, startOperation, endOperation, notifyFieldChanged } = useIdempotentMutation({
+    mutationFn: (formState: OfferFormState, idempotencyKey) => createOffer(companyId, formState, idempotencyKey),
+    invalidateQueryKeys: [companyOffersQueryKey(companyId), companyOffersSummaryQueryKey(companyId)],
+    onSuccess: () => {
+      enqueueSnackbar("Offer created successfully", { variant: "success" });
+      onOpenChange(false);
+    },
+    onError: (message) => {
+      enqueueSnackbar(message, { variant: "error" });
+    },
+  });
+
+  // Each open of the dialog is a new logical operation: fresh form, fresh
+  // idempotency key. Closing discards whatever key was in flight.
+  useEffect(() => {
+    if (open) {
+      setStep(0);
+      setForm(DEFAULTS);
+      startOperation();
+    } else {
+      endOperation();
+    }
+  }, [open, startOperation, endOperation]);
 
   function set<K extends keyof OfferFormState>(key: K, value: OfferFormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+    notifyFieldChanged();
   }
 
+  function setRedemptionField(key: "maxRedemptions" | "perUserLimit", value: string) {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (prev.type === "DISCOUNT") {
+        const redemptions = parseInt(key === "maxRedemptions" ? value : prev.maxRedemptions) || 0;
+        const perBenefit = prev.isPercentage
+          ? parseFloat(prev.maxBenefit) || 0
+          : parseFloat(prev.benefitAmount) || 0;
+        const implied = redemptions * perBenefit;
+        if (implied > (parseFloat(prev.initialBudget) || 0)) {
+          next.initialBudget = String(implied);
+        }
+      }
+      return next;
+    });
+    notifyFieldChanged();
+  }
+
+  const companySlug = companyName.toUpperCase().replace(/[^A-Z0-9]/g, "_");
   const poolName = form.code
-    ? `COMPANY_${form.code.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_POOL`
-    : "COMPANY_OFFER_POOL";
+    ? `${companySlug}_${form.code.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_POOL`
+    : `${companySlug}_OFFER_POOL`;
 
   function handleCreate() {
-    const now = new Date();
-    const offer: CompanyOffer = {
-      id: generateId("coff"),
-      code: form.code || "OFFER" + Math.random().toString(36).slice(2, 6).toUpperCase(),
-      type: form.type,
-      benefitAmount: parseFloat(form.benefitAmount) || 10,
-      isPercentage: form.isPercentage,
-      maxBenefit: parseFloat(form.maxBenefit) || 500,
-      minPaymentAmount: parseFloat(form.minPaymentAmount) || 50,
-      maxPaymentAmount: form.maxPaymentAmount ? parseFloat(form.maxPaymentAmount) : null,
-      maxRedemptions: parseInt(form.maxRedemptions) || 1000,
-      perUserLimit: parseInt(form.perUserLimit) || 3,
-      startTime: new Date(form.startTime),
-      endTime: new Date(form.endTime),
-      promotionPoolName: poolName,
-      initialBudget: parseFloat(form.initialBudget) || 5000,
-      remainingBudget: parseFloat(form.initialBudget) || 5000,
-      totalRedemptions: 0,
-      conversionRate: 0,
-      status: "ACTIVE",
-      fundingStatus: "FUNDED",
-      createdAt: now,
-    };
-    onCreated(offer);
-    onOpenChange(false);
-    setStep(0);
-    setForm(DEFAULTS);
+    mutate(form);
   }
 
   return (
@@ -301,7 +323,7 @@ export function CreateOfferDialog({ open, onOpenChange, onCreated }: CreateOffer
                   <TextInput
                     type="number"
                     value={form.maxRedemptions}
-                    onChange={(v) => set("maxRedemptions", v)}
+                    onChange={(v) => setRedemptionField("maxRedemptions", v)}
                     placeholder="1000"
                   />
                 </FieldGroup>
@@ -309,7 +331,7 @@ export function CreateOfferDialog({ open, onOpenChange, onCreated }: CreateOffer
                   <TextInput
                     type="number"
                     value={form.perUserLimit}
-                    onChange={(v) => set("perUserLimit", v)}
+                    onChange={(v) => setRedemptionField("perUserLimit", v)}
                     placeholder="3"
                   />
                 </FieldGroup>
@@ -424,9 +446,10 @@ export function CreateOfferDialog({ open, onOpenChange, onCreated }: CreateOffer
             <Button
               size="sm"
               onClick={handleCreate}
+              disabled={isProcessing}
               className="gap-1"
             >
-              <Check className="size-3.5" />
+              {isProcessing ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
               Create Offer
             </Button>
           )}

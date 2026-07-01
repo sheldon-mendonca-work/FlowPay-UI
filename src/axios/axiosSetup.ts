@@ -2,7 +2,6 @@ import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axio
 import { getCachedAccessToken, useAuthStore } from '@/store/authstore';
 
 export const BACKEND_URL = import.meta.env.VITE_FLOWPAY_BASE_API;
-console.log(BACKEND_URL)
 
 // Envelope every backend response is wrapped in.
 export interface ApiResponse<T> {
@@ -65,6 +64,27 @@ protectedAxios.interceptors.request.use((config: InternalAxiosRequestConfig) => 
 // On 401: attempt a silent token refresh via the public instance, update the
 // store, then retry the original request once. If refresh also fails, clear
 // auth state and redirect to the login page.
+//
+// Refresh calls are single-flighted: several requests can 401 at once (e.g.
+// parallel dashboard fetches), but they must share ONE refresh call. Firing
+// one refresh per request lets duplicate calls race on the same (rotating)
+// refresh token — the first succeeds, the rest get rejected as already-used
+// and force a logout even though the session is fine.
+let refreshPromise: Promise<{ accessToken: string; refreshToken: string }> | null = null;
+
+function refreshTokens() {
+  if (!refreshPromise) {
+    const { refreshToken } = useAuthStore.getState();
+    refreshPromise = publicAxios
+      .post<{ accessToken: string; refreshToken: string }>('/auth/refresh', { refreshToken })
+      .then(({ data }) => data)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
 protectedAxios.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -74,14 +94,9 @@ protectedAxios.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const { refreshToken, setTokens } = useAuthStore.getState();
+        const data = await refreshTokens();
 
-        const { data } = await publicAxios.post<{
-          accessToken: string;
-          refreshToken: string;
-        }>('/auth/refresh', { refreshToken });
-
-        setTokens(data.accessToken, data.refreshToken);
+        useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
 
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return protectedAxios(originalRequest);

@@ -1,30 +1,48 @@
 import { protectedAxios, ApiError } from "@/axios/axiosSetup";
 import type { ApiResponse } from "@/axios/axiosSetup";
-import type { NavAccount } from "@/types/types";
+import type { NavAccount, NavCompany } from "@/types/types";
 
 interface RawAccount {
   account_id: string;
-  account_name: string;
+  name?: string;
+  account_name?: string;
+  business_name?: string;
   currency: string;
   balance?: number;
-  display_name?: string;
+  company_id?: string;
+  payment_handle: string;
 }
 
-function toNavAccount(raw: RawAccount, type: "ACCOUNT" | "COMPANY"): NavAccount {
-  const name = raw.display_name || raw.account_name;
+function deriveInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((w) => w[0] ?? "")
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function toNavAccount(raw: RawAccount): NavAccount {
+  const name = raw?.name || raw?.account_name || raw?.business_name || '';
   return {
     id: raw.account_id,
     name,
-    accountId: raw.account_id,
-    type,
+    paymentHandle: raw.payment_handle,
+    type: "ACCOUNT",
     currency: raw.currency as NavAccount["currency"],
     balance: raw.balance ?? 0,
-    avatarInitials: name
-      .split(" ")
-      .map((w) => w[0] ?? "")
-      .join("")
-      .toUpperCase()
-      .slice(0, 2),
+    avatarInitials: deriveInitials(name),
+  };
+}
+
+function toNavCompany(raw: RawAccount): NavCompany {
+  const businessName = raw?.business_name || raw?.name || raw?.account_name || '';
+  return {
+    id: raw.account_id,
+    paymentHandle: raw.payment_handle,
+    companyId: raw.company_id ?? raw.account_id,
+    companyName: raw.name || raw.business_name || raw.account_name || '',
+    businessName,
   };
 }
 
@@ -32,7 +50,7 @@ function toNavAccount(raw: RawAccount, type: "ACCOUNT" | "COMPANY"): NavAccount 
 async function fetchConsumerNavList(): Promise<NavAccount[]> {
   const { data: envelope } = await protectedAxios.post<
     ApiResponse<{ accounts: RawAccount[] }>
-  >("/defaults/list", { type: "accounts" });
+  >("/accounts/defaults/list", { type: "accounts" });
 
   if (!envelope.success || envelope.code !== 200) {
     throw new ApiError(
@@ -40,11 +58,11 @@ async function fetchConsumerNavList(): Promise<NavAccount[]> {
       envelope.message ?? "Failed to fetch accounts list",
     );
   }
-  return (envelope.data?.accounts ?? []).map((a) => toNavAccount(a, "ACCOUNT"));
+  return (envelope.data?.accounts ?? []).map(toNavAccount);
 }
 
 // GET /accounts/defaults/companies
-async function fetchCompanyNavList(): Promise<NavAccount[]> {
+async function fetchCompanyNavList(): Promise<NavCompany[]> {
   const { data: envelope } = await protectedAxios.get<
     ApiResponse<{ companies: RawAccount[] }>
   >("/accounts/defaults/companies");
@@ -55,9 +73,11 @@ async function fetchCompanyNavList(): Promise<NavAccount[]> {
       envelope.message ?? "Failed to fetch companies list",
     );
   }
-  return (envelope.data?.companies ?? []).map((c) => toNavAccount(c, "COMPANY"));
+  return (envelope.data?.companies ?? []).map(toNavCompany);
 }
 
-export async function fetchNavAccounts(type: "ACCOUNT" | "COMPANY"): Promise<NavAccount[]> {
+export function fetchNavAccounts(type: "ACCOUNT"): Promise<NavAccount[]>;
+export function fetchNavAccounts(type: "COMPANY"): Promise<NavCompany[]>;
+export function fetchNavAccounts(type: "ACCOUNT" | "COMPANY"): Promise<NavAccount[] | NavCompany[]> {
   return type === "ACCOUNT" ? fetchConsumerNavList() : fetchCompanyNavList();
 }

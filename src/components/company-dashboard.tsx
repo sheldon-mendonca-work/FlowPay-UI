@@ -1,14 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Plus, Tag, TrendingUp, DollarSign, BarChart3, Wallet, Percent, ArrowUpRight, Clock, Building2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CreateOfferDialog } from "@/components/create-offer-dialog";
 import { cn } from "@/lib/utils";
-import { fetchCompanyOffers } from "@/api/companyOffersAPI";
-import type { CompanyOffer, NavAccount } from "@/types/types";
+import {
+  fetchCompanyOffers,
+  fetchCompanyOffersSummary,
+  companyOffersQueryKey,
+  companyOffersSummaryQueryKey,
+} from "@/api/companyOffersAPI";
+import type { NavCompany, CompanyOffer } from "@/types/types";
 
 interface CompanyDashboardProps {
-  selectedCompany: NavAccount;
+  company: NavCompany;
 }
 
 function fmt(n: number) {
@@ -153,34 +159,24 @@ function OfferRow({ offer }: { offer: CompanyOffer }) {
   );
 }
 
-export function CompanyDashboard({ selectedCompany }: CompanyDashboardProps) {
-  const [offers, setOffers] = useState<CompanyOffer[]>([]);
-  const [loading, setLoading] = useState(true);
+export function CompanyDashboard({ company }: CompanyDashboardProps) {
   const [createOpen, setCreateOpen] = useState(false);
 
-  useEffect(() => {
-    setLoading(true);
-    fetchCompanyOffers(selectedCompany.id).then((data) => {
-      setOffers(data);
-      setLoading(false);
-    });
-  }, [selectedCompany.id]);
+  const { data: offers = [], isLoading: offersLoading } = useQuery({
+    queryKey: companyOffersQueryKey(company.companyId),
+    queryFn: () => fetchCompanyOffers(company.companyId),
+  });
 
-  function handleOfferCreated(offer: CompanyOffer) {
-    setOffers((prev) => [offer, ...prev]);
-  }
+  const { data: summary, isLoading: summaryLoading } = useQuery({
+    queryKey: companyOffersSummaryQueryKey(company.companyId),
+    queryFn: () => fetchCompanyOffersSummary(company.companyId),
+  });
 
-  // Per-company summary metrics
-  const totalActiveOffers = offers.filter((o) => o.status === "ACTIVE").length;
-  const totalRedemptions = offers.reduce((s, o) => s + o.totalRedemptions, 0);
-  const totalBudget = offers.reduce((s, o) => s + o.initialBudget, 0);
-  const totalRemaining = offers.reduce((s, o) => s + o.remainingBudget, 0);
-  const budgetUtilized = totalBudget > 0
-    ? Math.round(((totalBudget - totalRemaining) / totalBudget) * 100)
+  const loading = offersLoading || summaryLoading;
+
+  const budgetUtilized = summary && summary.initialBudget > 0
+    ? Math.round(((summary.initialBudget - summary.budgetRemaining) / summary.initialBudget) * 100)
     : 0;
-  const avgConversion = offers.length > 0
-    ? (offers.reduce((s, o) => s + o.conversionRate, 0) / offers.length).toFixed(1)
-    : "0.0";
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -192,11 +188,11 @@ export function CompanyDashboard({ selectedCompany }: CompanyDashboardProps) {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-foreground truncate">{selectedCompany.name}</h2>
-              <span className="text-[10px] font-mono text-muted-foreground shrink-0">{selectedCompany.accountId}</span>
+              <h2 className="text-sm font-semibold text-foreground truncate">{company.companyName}</h2>
+              {/* <span className="text-[10px] font-mono text-muted-foreground shrink-0">{company.paymentHandle}</span> */}
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Offer Management · {selectedCompany.currency}
+              Offer Management · {company.businessName}
             </p>
           </div>
         </div>
@@ -219,27 +215,27 @@ export function CompanyDashboard({ selectedCompany }: CompanyDashboardProps) {
               <MetricCard
                 icon={<Tag className="size-4" />}
                 label="Active Offers"
-                value={String(totalActiveOffers)}
-                sub={`${offers.length} total`}
+                value={String(summary?.activeOffers ?? 0)}
+                sub={`${summary?.totalOffers ?? 0} total`}
                 accent="primary"
               />
               <MetricCard
                 icon={<BarChart3 className="size-4" />}
                 label="Total Redemptions"
-                value={totalRedemptions.toLocaleString()}
+                value={(summary?.totalRedemptions ?? 0).toLocaleString()}
                 accent="success"
               />
               <MetricCard
                 icon={<Wallet className="size-4" />}
                 label="Budget Remaining"
-                value={`$${Math.round(totalRemaining / 1000)}k`}
+                value={`$${Math.round((summary?.budgetRemaining ?? 0) / 1000)}k`}
                 sub={`${budgetUtilized}% utilized`}
                 accent="warning"
               />
               <MetricCard
                 icon={<TrendingUp className="size-4" />}
                 label="Avg Conversion"
-                value={`${avgConversion}%`}
+                value={`${(summary?.avgConversionRate ?? 0).toFixed(1)}%`}
                 accent="primary"
               />
             </div>
@@ -261,7 +257,7 @@ export function CompanyDashboard({ selectedCompany }: CompanyDashboardProps) {
                   <div>
                     <p className="text-sm text-muted-foreground font-medium">No offers yet</p>
                     <p className="text-xs text-muted-foreground/60 mt-0.5">
-                      Create the first offer for {selectedCompany.name}
+                      Create the first offer for {company.companyName}
                     </p>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)} className="gap-1.5">
@@ -284,7 +280,8 @@ export function CompanyDashboard({ selectedCompany }: CompanyDashboardProps) {
       <CreateOfferDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={handleOfferCreated}
+        companyName={company.companyName}
+        companyId={company.companyId}
       />
     </div>
   );

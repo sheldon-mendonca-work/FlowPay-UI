@@ -1,31 +1,5 @@
-import type { User, Offer, Transaction, LiveActivityEvent, CompanyOffer } from "../types/types";
+import type { Offer, Transaction, LiveActivityEvent, CompanyOffer } from "../types/types";
 
-export const USERS: User[] = [
-  {
-    id: "usr_01",
-    accountId: "ACC-7842-XKPL",
-    name: "Alex Chen",
-    avatarInitials: "AC",
-    balance: 12_485.50,
-    currency: "INR",
-  },
-  {
-    id: "usr_02",
-    accountId: "ACC-3391-MRVZ",
-    name: "Jordan Blake",
-    avatarInitials: "JB",
-    balance: 8_230.00,
-    currency: "INR",
-  },
-  {
-    id: "usr_03",
-    accountId: "ACC-5517-NQFW",
-    name: "Sam Rivera",
-    avatarInitials: "SR",
-    balance: 22_100.75,
-    currency: "INR",
-  },
-];
 
 export const OFFERS: Offer[] = [
   {

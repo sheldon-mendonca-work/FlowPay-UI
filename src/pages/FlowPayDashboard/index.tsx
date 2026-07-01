@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Activity, CreditCard, Server } from "lucide-react";
 import { TopNav } from "@/components/top-nav";
 import { SenderColumn } from "@/components/sender-column";
@@ -9,13 +10,13 @@ import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { ReadmeDialog } from "@/components/readme-dialog";
 import { ArchitectureDialog } from "@/components/architecture-dialog";
 import {
-  OFFERS,
   SENDER_TRANSACTIONS,
   generateId,
   generateIdempotencyKey,
 } from "@/lib/mock-data";
 import { buildTimelineSteps, animateTimeline } from "@/lib/timeline-utils";
 import { fetchNavAccounts } from "@/api/navAccountsAPI";
+import { fetchOffers } from "@/api/offersAPI";
 import { useAuthStore } from "@/store/authstore";
 import type {
   User,
@@ -26,7 +27,16 @@ import type {
   PaymentResult,
   NavAccount,
   ReceiverResult,
+  NavCompany,
+  Offer,
 } from "@/types/types";
+
+function promoteToFront<T extends { id: string }>(list: T[], id: string): T[] {
+  const idx = list.findIndex((item) => item.id === id);
+  if (idx <= 1) return list; // already visible
+  const item = list[idx];
+  return [item, ...list.filter((i) => i.id !== id)];
+}
 
 function deriveInitials(name: string): string {
   return name
@@ -54,17 +64,26 @@ type Theme   = "light" | "dark";
 type AppMode = "consumer" | "company";
 
 export default function FlowPayDashboard() {
+  const navigate = useNavigate();
+
   // ── Auth / sender identity ─────────────────────────────────────────────
   const userInfo = useAuthStore((s) => s.userInfo);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+  
+
+  const handleLogout = useCallback(() => {
+    clearAuth();
+    navigate("/", { replace: true });
+  }, [clearAuth, navigate]);
 
   const senderUser: User = useMemo(() => {
     if (!userInfo) {
       // ProtectedRoute guarantees userInfo is set before we render; this is a type-safe fallback
-      return { id: "", accountId: "", name: "Loading…", avatarInitials: "…", balance: 0, currency: "INR" };
+      return { id: "", paymentHandle: "", name: "Loading…", avatarInitials: "…", balance: 0, currency: "INR" };
     }
     return {
       id: userInfo.account_id,
-      accountId: userInfo.account_id,
+      paymentHandle: userInfo.payment_handle,
       name: userInfo.account_name,
       avatarInitials: deriveInitials(userInfo.account_name),
       balance: userInfo.balance,
@@ -98,31 +117,52 @@ export default function FlowPayDashboard() {
   const [readmeOpen, setReadmeOpen] = useState(false);
   const [archOpen, setArchOpen] = useState(false);
 
-  // ── Nav accounts (right panel / company) ──────────────────────────────
+  // ── Nav accounts (right panel) / companies (company dashboard) ─────────
   const [navAccountsOrdered, setNavAccountsOrdered] = useState<NavAccount[]>([]);
-  const [selectedNavAccountId, setSelectedNavAccountId] = useState<string>("");
+  const [companiesOrdered, setCompaniesOrdered] = useState<NavCompany[]>([]);
+  const [selectedNavId, setSelectedNavId] = useState<string>("");
 
-  // Fetch nav accounts when appMode changes
+  // ── Offers ────────────────────────────────────────────────────────────
+  const [offers, setOffers] = useState<Offer[]>([]);
+
   useEffect(() => {
-    const type = appMode === "consumer" ? "ACCOUNT" : "COMPANY";
-    fetchNavAccounts(type).then((accounts) => {
-      setNavAccountsOrdered(accounts);
-      setSelectedNavAccountId(accounts[0]?.id ?? "");
-    });
+    fetchOffers().then(setOffers);
+  }, []);
+
+  // Fetch nav accounts / companies when appMode changes
+  useEffect(() => {
+    if (appMode === "consumer") {
+      fetchNavAccounts("ACCOUNT").then((accounts) => {
+        setNavAccountsOrdered(accounts);
+        setSelectedNavId(accounts[0]?.id ?? "");
+      });
+    } else {
+      fetchNavAccounts("COMPANY").then((companies) => {
+        setCompaniesOrdered(companies);
+        setSelectedNavId(companies[0]?.id ?? "");
+      });
+    }
   }, [appMode]);
 
-  // Promote-to-front when a "More" account is selected
+  // Promote-to-front when a "More" entry is selected
   function handleNavAccountSelect(id: string) {
-    setSelectedNavAccountId(id);
-    setNavAccountsOrdered((prev) => {
-      const idx = prev.findIndex((a) => a.id === id);
-      if (idx <= 1) return prev; // already visible
-      const account = prev[idx];
-      return [account, ...prev.filter((a) => a.id !== id)];
-    });
+    setSelectedNavId(id);
+    if (appMode === "consumer") {
+      setNavAccountsOrdered((prev) => promoteToFront(prev, id));
+    } else {
+      setCompaniesOrdered((prev) => promoteToFront(prev, id));
+    }
   }
 
-  const selectedNavAccount = navAccountsOrdered.find((a) => a.id === selectedNavAccountId);
+  const selectedNavAccount = navAccountsOrdered.find((a) => a.id === selectedNavId);
+  const selectedCompany = companiesOrdered.find((c) => c.id === selectedNavId);
+
+  // Minimal shape the top nav switcher needs, regardless of mode
+  const navSwitcherItems = appMode === "consumer" ? navAccountsOrdered : companiesOrdered.map((c) => ({
+    id: c.id,
+    name: c.companyName,
+    paymentHandle: c.paymentHandle,
+  }));
 
   // ── Payment receiver (independent of nav) ────────────────────────────
   const [paymentReceiver, setPaymentReceiver] = useState<ReceiverResult | null>(null);
@@ -144,7 +184,7 @@ export default function FlowPayDashboard() {
     async (amount: number, _receiverId: string, offerId: string | null) => {
       if (isProcessing || !paymentReceiver) return;
 
-      const offer = OFFERS.find((o) => o.id === offerId) ?? null;
+      const offer = offers.find((o) => o.id === offerId) ?? null;
       const steps = buildTimelineSteps(offer);
 
       setIsProcessing(true);
@@ -258,14 +298,14 @@ export default function FlowPayDashboard() {
 
       setIsProcessing(false);
     },
-    [isProcessing, paymentReceiver],
+    [isProcessing, paymentReceiver, offers],
   );
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <TopNav
-        navAccounts={navAccountsOrdered}
-        selectedNavAccountId={selectedNavAccountId}
+        navAccounts={navSwitcherItems}
+        selectedNavAccountId={selectedNavId}
         onNavAccountSelect={handleNavAccountSelect}
         statuses={TOP_NAV_STATUSES}
         healthStats={[
@@ -279,6 +319,7 @@ export default function FlowPayDashboard() {
         onOpenArchitecture={() => setArchOpen(true)}
         appMode={appMode}
         onModeChange={setAppMode}
+        onLogout={handleLogout}
       />
 
       {appMode === "consumer" ? (
@@ -289,7 +330,7 @@ export default function FlowPayDashboard() {
               sender={senderUser}
               selectedReceiver={paymentReceiver}
               onReceiverChange={setPaymentReceiver}
-              offers={OFFERS}
+              offers={offers}
               transactions={senderTxs}
               onSendPayment={handleSendPayment}
               isProcessing={isProcessing}
@@ -319,8 +360,8 @@ export default function FlowPayDashboard() {
         </div>
       ) : (
         <div className="flex-1 overflow-hidden">
-          {selectedNavAccount && (
-            <CompanyDashboard selectedCompany={selectedNavAccount} />
+          {selectedCompany && (
+            <CompanyDashboard company={selectedCompany} />
           )}
         </div>
       )}

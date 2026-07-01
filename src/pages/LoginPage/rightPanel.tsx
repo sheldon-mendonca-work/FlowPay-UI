@@ -218,7 +218,7 @@ function PersonaForm({
   showCompany?: boolean;
 }) {
   const selectedOpt = value ? options.find((o) => o.value === value) : null;
-  console.log(selectedOpt)
+  
   return (
     <div className="animate-fade-up">
       <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-muted-foreground">

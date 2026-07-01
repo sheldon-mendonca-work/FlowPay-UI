@@ -18,7 +18,7 @@ export interface Offer {
 
 export interface User {
   id: string;
-  accountId: string;
+  paymentHandle: string;
   name: string;
   avatarInitials: string;
   balance: number;
@@ -80,6 +80,15 @@ export interface CompanyOffer {
   createdAt: Date;
 }
 
+export interface CompanyOffersSummary {
+  activeOffers: number;
+  totalOffers: number;
+  totalRedemptions: number;
+  budgetRemaining: number;
+  initialBudget: number;
+  avgConversionRate: number;
+}
+
 export interface LiveActivityEvent {
   id: string;
   type: "payment_received" | "cashback_received" | "offer_redeemed" | "refund_received";
@@ -94,6 +103,7 @@ export interface LiveActivityEvent {
 export interface UserInfoResponse {
   account_id: string;
   account_name: string;
+  payment_handle: string;
   account_type: string;
   balance: number;
   currency: string;
@@ -108,11 +118,22 @@ export interface UserInfoResponse {
 export interface NavAccount {
   id: string;
   name: string;
-  accountId: string;
+  paymentHandle: string;
   type: "ACCOUNT" | "COMPANY";
   currency: Currency;
   balance: number;
   avatarInitials: string;
+}
+
+// Explicit company identity for the company dashboard / offer creation flow —
+// kept separate from NavAccount so `companyId` can never be confused with a
+// generic nav-switcher `id`.
+export interface NavCompany {
+  id: string;
+  paymentHandle: string;
+  companyId: string;
+  companyName: string;
+  businessName: string;
 }
 
 export interface ReceiverResult {
