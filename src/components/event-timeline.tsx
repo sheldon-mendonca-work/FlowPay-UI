@@ -184,9 +184,11 @@ function EventInspectorDrawer({
 interface EventTimelineProps {
   steps: TimelineStep[];
   isRunning: boolean;
+  /** Total elapsed time in ms — pass only once the payment has completed or failed. */
+  totalTimeMs?: number | null;
 }
 
-export function EventTimeline({ steps, isRunning }: EventTimelineProps) {
+export function EventTimeline({ steps, isRunning, totalTimeMs }: EventTimelineProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [inspectorStep, setInspectorStep] = useState<TimelineStep | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -207,6 +209,11 @@ export function EventTimeline({ steps, isRunning }: EventTimelineProps) {
           <div className="flex items-center gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground">
               Distributed Event Timeline
+              {totalTimeMs != null && (
+                <span className="ml-1 normal-case font-mono text-muted-foreground">
+                  ({totalTimeMs}ms)
+                </span>
+              )}
             </h2>
             {isRunning && (
               <span className="flex items-center gap-1 text-[10px] text-info font-mono">
@@ -288,6 +295,11 @@ export function EventTimeline({ steps, isRunning }: EventTimelineProps) {
                               )}
                             >
                               {step.name}
+                              {step.stepTimeMs != null && (
+                                <span className="ml-1 font-mono font-normal text-muted-foreground/70">
+                                  ({step.stepTimeMs}ms)
+                                </span>
+                              )}
                             </span>
 
                             <div className="flex items-center gap-2 flex-wrap">

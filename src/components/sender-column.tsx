@@ -1,12 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Loader2, ChevronDown, Plus, X, Tag, Percent, DollarSign, ArrowRight, Search } from "lucide-react";
+import { Loader2, ChevronDown, Plus, X, Tag, Percent, DollarSign, ArrowRight, Search, Check, AlertCircle } from "lucide-react";
+import { useSnackbar } from "notistack";
 import { Button } from "@/components/ui/button";
 import { WalletCard } from "@/components/wallet-card";
 import { OfferModal } from "@/components/offer-modal";
 import { TransactionTable } from "@/components/transaction-table";
 import { cn } from "@/lib/utils";
-import { searchReceivers } from "@/api/receiverSearchAPI";
-import type { User, Offer, Transaction, ReceiverResult } from "@/types/types";
+import { searchReceivers, fetchAccountByPaymentHandle } from "@/api/receiverSearchAPI";
+import { ApiError } from "@/axios/axiosSetup";
+import type { User, Offer, Transaction, ReceiverResult, Currency } from "@/types/types";
+import { getCurrencySymbol } from "@/utils/currency";
+
+type ValidationStatus = "idle" | "loading" | "success" | "error";
 
 interface SenderColumnProps {
   sender: User;
@@ -16,13 +21,13 @@ interface SenderColumnProps {
   transactions: Transaction[];
   onSendPayment: (amount: number, receiverId: string, offerId: string | null) => void;
   isProcessing: boolean;
-  balanceDelta: number;
+  onSelectTransaction?: (tx: Transaction) => void;
 }
 
 const CURRENCIES = ["INR", "EUR", "GBP"] as const;
 
-function fmt(n: number) {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function fmt(n: number, currency: Currency = 'INR') {
+  return `${getCurrencySymbol(currency)}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function AppliedOfferChip({
@@ -153,10 +158,14 @@ function PaymentSummary({ amount, offer }: { amount: number; offer: Offer | null
 
 function ReceiverSearchCombobox({
   selected,
-  onSelect,
+  pendingHandle,
+  onSelectHandle,
+  onClear,
 }: {
   selected: ReceiverResult | null;
-  onSelect: (r: ReceiverResult | null) => void;
+  pendingHandle: string | null;
+  onSelectHandle: (handle: string) => void;
+  onClear: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -185,14 +194,14 @@ function ReceiverSearchCombobox({
     return () => clearTimeout(timer);
   }, [query, isOpen, runSearch]);
 
-  // Load initial results when opening
-  useEffect(() => {
-    if (isOpen) {
-      setPage(1);
-      runSearch(query, 1);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  // // Load initial results when opening
+  // useEffect(() => {
+  //   if (isOpen) {
+  //     setPage(1);
+  //     runSearch(query, 1);
+  //   }
+  // // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [isOpen]);
 
   // Click-outside dismiss
   useEffect(() => {
@@ -212,7 +221,14 @@ function ReceiverSearchCombobox({
   }
 
   function handleSelect(r: ReceiverResult) {
-    onSelect(r);
+    onSelectHandle(r.paymentHandle);
+    setIsOpen(false);
+    setQuery("");
+  }
+
+  function handleSearchIconClick() {
+    if (!query.trim()) return;
+    onSelectHandle(query);
     setIsOpen(false);
     setQuery("");
   }
@@ -223,6 +239,8 @@ function ReceiverSearchCombobox({
     runSearch(query, nextPage, true);
   }
 
+  const triggerLabel = selected ? selected.name : pendingHandle ? pendingHandle : "Search receiver...";
+
   return (
     <div ref={containerRef} className="relative">
       {/* Trigger */}
@@ -232,16 +250,16 @@ function ReceiverSearchCombobox({
         className={cn(
           "w-full h-9 rounded-md border border-input bg-input text-sm px-3 pr-8 text-left flex items-center transition-colors",
           "focus:outline-none focus:ring-1 focus:ring-ring",
-          selected ? "text-foreground" : "text-muted-foreground"
+          selected || pendingHandle ? "text-foreground" : "text-muted-foreground"
         )}
       >
         <span className="flex-1 truncate">
-          {selected ? selected.name : "Search receiver..."}
+          {triggerLabel}
         </span>
-        {selected ? (
+        {selected || pendingHandle ? (
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onSelect(null); }}
+            onClick={(e) => { e.stopPropagation(); onClear(); }}
             className="absolute right-2.5 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Clear receiver"
           >
@@ -256,14 +274,24 @@ function ReceiverSearchCombobox({
       {isOpen && (
         <div className="absolute top-full mt-1 left-0 right-0 z-50 rounded-lg border border-border bg-card shadow-lg overflow-hidden">
           {/* Search input */}
-          <div className="p-2 border-b border-border/60">
+          <div className="p-2 border-b border-border/60 flex items-center gap-1.5">
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Name or account ID…"
-              className="w-full h-8 rounded-md border border-input bg-input text-xs text-foreground px-2.5 focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+              placeholder="Name, account ID, or payment handle…"
+              className="flex-1 h-8 rounded-md border border-input bg-input text-xs text-foreground px-2.5 focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
             />
+            <button
+              type="button"
+              onClick={handleSearchIconClick}
+              disabled={!query.trim()}
+              className="size-8 shrink-0 rounded-md border border-input bg-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              aria-label="Look up payment handle"
+              title="Look up payment handle"
+            >
+              <Search className="size-3.5" />
+            </button>
           </div>
 
           {/* Results */}
@@ -288,7 +316,7 @@ function ReceiverSearchCombobox({
                 )}
               >
                 <span className="text-xs font-medium text-foreground">{r.name}</span>
-                <span className="text-[10px] font-mono text-muted-foreground">{r.accountId}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{r.paymentHandle}</span>
               </button>
             ))}
             {hasMore && (
@@ -316,12 +344,16 @@ export function SenderColumn({
   transactions,
   onSendPayment,
   isProcessing,
-  balanceDelta,
+  onSelectTransaction,
 }: SenderColumnProps) {
   const [amount, setAmount] = useState("250.00");
   const [currency, setCurrency] = useState<string>("INR");
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
   const [offerModalOpen, setOfferModalOpen] = useState(false);
+  const [validationStatus, setValidationStatus] = useState<ValidationStatus>("idle");
+  const [pendingHandle, setPendingHandle] = useState<string | null>(null);
+  const validationSeqRef = useRef(0);
+  const { enqueueSnackbar } = useSnackbar();
 
   const parsedAmount = parseFloat(amount) || 0;
   const selectedOffer = offers.find((o) => o.id === selectedOfferId) ?? null;
@@ -335,13 +367,45 @@ export function SenderColumn({
 
   const netAmount = Math.max(0, parsedAmount - discountAmount);
 
+  const handleSelectHandle = useCallback(async (handle: string) => {
+    const trimmed = handle.trim();
+    if (!trimmed) return;
+
+    const seq = ++validationSeqRef.current;
+    setPendingHandle(trimmed);
+    setValidationStatus("loading");
+    onReceiverChange(null);
+
+    try {
+      const receiver = await fetchAccountByPaymentHandle(trimmed);
+      if (seq !== validationSeqRef.current) return;
+      setValidationStatus("success");
+      onReceiverChange(receiver);
+    } catch (err) {
+      if (seq !== validationSeqRef.current) return;
+      setValidationStatus("error");
+      onReceiverChange(null);
+      const message = err instanceof ApiError && err.code === "404"
+        ? "User not found"
+        : "Failed to look up user";
+      enqueueSnackbar(message, { variant: "error" });
+    }
+  }, [onReceiverChange, enqueueSnackbar]);
+
+  function handleClearReceiver() {
+    validationSeqRef.current++;
+    setPendingHandle(null);
+    setValidationStatus("idle");
+    onReceiverChange(null);
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!parsedAmount || isProcessing || !selectedReceiver) return;
+    if (!parsedAmount || isProcessing || !selectedReceiver || validationStatus !== "success") return;
     onSendPayment(parsedAmount, selectedReceiver.id, selectedOfferId);
   }
 
-  const canPay = parsedAmount > 0 && !!selectedReceiver && !isProcessing;
+  const canPay = parsedAmount > 0 && !!selectedReceiver && validationStatus === "success" && !isProcessing;
 
   return (
     <div className="flex flex-col h-full border-r border-border overflow-hidden pb-8">
@@ -355,7 +419,7 @@ export function SenderColumn({
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="flex flex-col gap-3 p-4 pb-0">
 
-          <WalletCard user={sender} variant="sender" balanceDelta={balanceDelta} />
+          <WalletCard user={sender} variant="sender" />
 
           <div className="rounded-lg border border-border bg-card">
             <div className="px-4 py-2.5 border-b border-border/60">
@@ -372,12 +436,27 @@ export function SenderColumn({
                 </label>
                 <ReceiverSearchCombobox
                   selected={selectedReceiver}
-                  onSelect={onReceiverChange}
+                  pendingHandle={pendingHandle}
+                  onSelectHandle={handleSelectHandle}
+                  onClear={handleClearReceiver}
                 />
-                {selectedReceiver && (
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {selectedReceiver.accountId} · {selectedReceiver.currency}
-                  </span>
+                {validationStatus === "loading" && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" />
+                    Validating user…
+                  </div>
+                )}
+                {validationStatus === "success" && selectedReceiver && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-success font-medium">
+                    <Check className="size-3" />
+                    User found · {selectedReceiver.paymentHandle} · {selectedReceiver.currency}
+                  </div>
+                )}
+                {validationStatus === "error" && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-destructive font-medium">
+                    <AlertCircle className="size-3" />
+                    User not found
+                  </div>
                 )}
               </div>
 
@@ -389,7 +468,7 @@ export function SenderColumn({
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-mono">
-                      $
+                      {getCurrencySymbol(currency)}
                     </span>
                     <input
                       type="number"
@@ -488,6 +567,8 @@ export function SenderColumn({
               <Loader2 data-icon="inline-start" className="animate-spin" />
               Processing...
             </>
+          ) : validationStatus === "loading" ? (
+            "Validating user..."
           ) : !selectedReceiver ? (
             "Select a receiver"
           ) : parsedAmount > 0 ? (
@@ -498,7 +579,7 @@ export function SenderColumn({
             "Enter an amount"
           )}
         </Button>
-        {!selectedReceiver && !isProcessing && (
+        {!selectedReceiver && validationStatus === "idle" && !isProcessing && (
           <p className="text-[10px] text-center text-muted-foreground mt-1.5">
             Search and select a receiver above
           </p>
@@ -507,7 +588,7 @@ export function SenderColumn({
 
       {/* Fixed-height scrollable transactions */}
       <div className="shrink-0 border-t border-border flex flex-col" style={{ height: "220px" }}>
-        <TransactionTable transactions={transactions} fixedHeight />
+        <TransactionTable transactions={transactions} fixedHeight onRowClick={onSelectTransaction} />
       </div>
 
       <OfferModal

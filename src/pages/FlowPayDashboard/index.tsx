@@ -9,14 +9,22 @@ import { CompanyDashboard } from "@/components/company-dashboard";
 import { WelcomeOverlay } from "@/components/welcome-overlay";
 import { ReadmeDialog } from "@/components/readme-dialog";
 import { ArchitectureDialog } from "@/components/architecture-dialog";
+import { PaymentDetailsModal } from "@/components/payment-details/payment-details-modal";
 import {
-  SENDER_TRANSACTIONS,
+  buildTimelineSteps,
+  mergeTimelineSnapshot,
+  isTimelineFailed,
+  isTimelineComplete,
   generateId,
   generateIdempotencyKey,
-} from "@/lib/mock-data";
-import { buildTimelineSteps, animateTimeline } from "@/lib/timeline-utils";
+} from "@/lib/timeline-utils";
 import { fetchNavAccounts } from "@/api/navAccountsAPI";
 import { fetchOffers } from "@/api/offersAPI";
+import { submitPayment } from "@/api/paymentAPI";
+import { subscribeToPaymentTimeline } from "@/api/paymentTimelineAPI";
+import { getFlowpayMetrics } from "@/api/activityFeedAPI";
+import { fetchAccountBalance } from "@/api/accountBalanceAPI";
+import { fetchTransactions } from "@/api/transactionsAPI";
 import { useAuthStore } from "@/store/authstore";
 import type {
   User,
@@ -24,12 +32,16 @@ import type {
   Transaction,
   TimelineStep,
   LiveActivityEvent,
-  PaymentResult,
   NavAccount,
   ReceiverResult,
   NavCompany,
   Offer,
+  FlowpayMetricsDTO,
 } from "@/types/types";
+
+// Safety net: if a trace hasn't reached PAYMENT_COMPLETED within this window
+// (SSE drop, missed event, etc.), refresh account data anyway.
+const PAYMENT_SETTLE_TIMEOUT_MS = 30_000;
 
 function promoteToFront<T extends { id: string }>(list: T[], id: string): T[] {
   const idx = list.findIndex((item) => item.id === id);
@@ -47,19 +59,6 @@ function deriveInitials(name: string): string {
     .slice(0, 2);
 }
 
-const TOP_NAV_STATUSES = [
-  { label: "Kafka",            connected: true },
-  { label: "Offer Service",    connected: true },
-  { label: "Payment Service",  connected: true },
-];
-
-const INITIAL_HEALTH = {
-  paymentsToday:         1_847,
-  offersRedeemed:          312,
-  kafkaEventsProcessed: 14_228,
-  failedEvents:              3,
-};
-
 type Theme   = "light" | "dark";
 type AppMode = "consumer" | "company";
 
@@ -69,7 +68,8 @@ export default function FlowPayDashboard() {
   // ── Auth / sender identity ─────────────────────────────────────────────
   const userInfo = useAuthStore((s) => s.userInfo);
   const clearAuth = useAuthStore((s) => s.clearAuth);
-  
+  const setUserInfo = useAuthStore((s) => s.setUserInfo);
+
 
   const handleLogout = useCallback(() => {
     clearAuth();
@@ -116,6 +116,7 @@ export default function FlowPayDashboard() {
   // ── Modals ────────────────────────────────────────────────────────────
   const [readmeOpen, setReadmeOpen] = useState(false);
   const [archOpen, setArchOpen] = useState(false);
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
 
   // ── Nav accounts (right panel) / companies (company dashboard) ─────────
   const [navAccountsOrdered, setNavAccountsOrdered] = useState<NavAccount[]>([]);
@@ -168,36 +169,56 @@ export default function FlowPayDashboard() {
   const [paymentReceiver, setPaymentReceiver] = useState<ReceiverResult | null>(null);
 
   // ── Consumer payment state ────────────────────────────────────────────
-  const [senderDelta, setSenderDelta] = useState<number>(0);
-  const [receiverDelta, setReceiverDelta] = useState<number>(0);
+  const [senderTxs, setSenderTxs] = useState<Transaction[]>([]);
 
-  const [senderTxs, setSenderTxs] = useState<Transaction[]>(SENDER_TRANSACTIONS);
+  // Bumped after a payment settles (or times out) so each side self-fetches
+  // its own fresh balance/transactions.
+  const [senderRefreshTick, setSenderRefreshTick] = useState(0);
+  const [receiverRefreshTick, setReceiverRefreshTick] = useState(0);
+
+  const senderId = senderUser.id;
+  useEffect(() => {
+    if (!senderId) return;
+    fetchAccountBalance(senderId)
+      .then((bal) => {
+        const info = useAuthStore.getState().userInfo;
+        if (info) setUserInfo({ ...info, balance: bal.balance });
+      })
+      .catch((err) => console.error("Failed to refresh sender balance:", err));
+
+    fetchTransactions(senderId, 1)
+      .then((res) => setSenderTxs(res.items))
+      .catch((err) => console.error("Failed to refresh sender transactions:", err));
+  }, [senderRefreshTick, senderId, setUserInfo]);
 
   const [timelineSteps, setTimelineSteps] = useState<TimelineStep[]>([]);
+  const [totalTimeMs, setTotalTimeMs] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   // New activity events produced by the payment flow; fed into ReceiverColumn
   const [newActivityEvents, setNewActivityEvents] = useState<LiveActivityEvent[]>([]);
-  const [health, setHealth] = useState(INITIAL_HEALTH);
+
+  // Live platform metrics (payment/offer counts, service connectivity) pushed
+  // over SSE — drives the TopNav health stats/statuses and CenterColumn stat tiles.
+  const [metrics, setMetrics] = useState<FlowpayMetricsDTO | null>(null);
+  useEffect(() => {
+    const unsubscribe = getFlowpayMetrics(setMetrics);
+    return unsubscribe;
+  }, []);
 
   const handleSendPayment = useCallback(
-    async (amount: number, _receiverId: string, offerId: string | null) => {
+    (amount: number, _receiverId: string, offerId: string | null) => {
       if (isProcessing || !paymentReceiver) return;
 
       const offer = offers.find((o) => o.id === offerId) ?? null;
-      const steps = buildTimelineSteps(offer);
+      const skeleton = buildTimelineSteps(offer);
 
       setIsProcessing(true);
-      setTimelineSteps(steps);
-      setSenderDelta(0);
-      setReceiverDelta(0);
+      setTimelineSteps(skeleton);
+      setTotalTimeMs(null);
       setNewActivityEvents([]);
 
-      const paymentId      = generateId("pay");
       const traceId        = generateId("trc");
-      const requestId      = generateId("req");
-      const reservationId  = offer ? generateId("rsv") : undefined;
-      const redemptionId   = offer ? generateId("rdm") : undefined;
       const idempotencyKey = generateIdempotencyKey();
 
       const cashbackAmount =
@@ -215,90 +236,126 @@ export default function FlowPayDashboard() {
           : 0;
 
       const netPayment = amount - discountAmount;
+      const receiver = paymentReceiver;
 
-      const result: PaymentResult = {
-        paymentId,
-        traceId,
-        requestId,
-        offerId: offer?.id,
-        reservationId,
-        redemptionId,
-        idempotencyKey,
-        senderDelta:  -netPayment,
-        receiverDelta: netPayment,
-        cashbackAmount,
-      };
-
-      const gen = animateTimeline(steps, result, (updated) => {
-        setTimelineSteps(updated);
+      // Show the receiver's wallet on the right immediately so its refresh is visible.
+      setNavAccountsOrdered((prev) => {
+        if (prev.some((a) => a.id === receiver.accountId)) return promoteToFront(prev, receiver.accountId);
+        const synthesized: NavAccount = {
+          id: receiver.accountId,
+          name: receiver.name,
+          paymentHandle: receiver.paymentHandle,
+          type: "ACCOUNT",
+          currency: receiver.currency,
+          balance: 0,
+          avatarInitials: deriveInitials(receiver.name),
+        };
+        return [synthesized, ...prev];
       });
-      for await (const _ of gen) { /* each yield drives a UI update via callback */ }
+      setSelectedNavId(receiver.accountId);
 
-      setSenderDelta(-netPayment);
-      setReceiverDelta(netPayment + (cashbackAmount ?? 0));
+      let settled = false;
+      let settleTimeoutId: ReturnType<typeof setTimeout> | undefined;
+      function finalize(success: boolean) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(settleTimeoutId);
+        unsubscribe();
+        setIsProcessing(false);
+        setSenderRefreshTick((t) => t + 1);
+        setReceiverRefreshTick((t) => t + 1);
+        if (!success) return;
 
-      const now = new Date();
+        const now = new Date();
 
-      setSenderTxs((prev) => [
-        {
-          id: generateId("tx"),
-          time: now,
-          counterparty: paymentReceiver.name,
-          amount: netPayment,
-          currency: "INR",
-          status: "COMPLETED",
-          direction: "out",
-        },
-        ...prev,
-      ]);
+        setSenderTxs((prev) => [
+          {
+            id: generateId("tx"),
+            paymentId: traceId,
+            time: now,
+            counterparty: receiver.name,
+            amount: netPayment,
+            currency: "INR",
+            status: "COMPLETED",
+            direction: "out",
+          },
+          ...prev,
+        ]);
 
-      const events: LiveActivityEvent[] = [
-        {
-          id: generateId("act"),
-          type: "payment_received",
-          amount: netPayment,
-          currency: "INR",
-          from: senderUser.name,
-          message: `Payment received from ${senderUser.name}`,
-          timestamp: now,
-          isNew: true,
-        },
-      ];
+        const events: LiveActivityEvent[] = [
+          {
+            id: generateId("act"),
+            type: "payment_received",
+            amount: netPayment,
+            currency: "INR",
+            from: senderUser.name,
+            message: `Payment received from ${senderUser.name}`,
+            timestamp: now,
+            isNew: true,
+          },
+        ];
 
-      if (offer) {
-        events.push({
-          id: generateId("act"),
-          type: "offer_redeemed",
-          message: `Offer ${offer.code} redeemed successfully`,
-          timestamp: new Date(now.getTime() + 500),
-          isNew: true,
-        });
+        if (offer) {
+          events.push({
+            id: generateId("act"),
+            type: "offer_redeemed",
+            message: `Offer ${offer.code} redeemed successfully`,
+            timestamp: new Date(now.getTime() + 500),
+            isNew: true,
+          });
+        }
+
+        if (cashbackAmount) {
+          events.push({
+            id: generateId("act"),
+            type: "cashback_received",
+            amount: cashbackAmount,
+            currency: "INR",
+            message: `Cashback credited from ${offer!.code} offer`,
+            timestamp: new Date(now.getTime() + 1_200),
+            isNew: true,
+          });
+        }
+
+        setNewActivityEvents(events);
       }
 
-      if (cashbackAmount) {
-        events.push({
-          id: generateId("act"),
-          type: "cashback_received",
-          amount: cashbackAmount,
-          currency: "INR",
-          message: `Cashback credited from ${offer!.code} offer`,
-          timestamp: new Date(now.getTime() + 1_200),
-          isNew: true,
-        });
-      }
+      const unsubscribe = subscribeToPaymentTimeline(traceId, (dto) => {
+        setTimelineSteps((prev) => mergeTimelineSnapshot(prev, dto));
+        if (isTimelineFailed(dto)) {
+          setTotalTimeMs(dto.total_time);
+          finalize(false);
+        } else if (isTimelineComplete(dto)) {
+          setTotalTimeMs(dto.total_time);
+          finalize(true);
+        }
+      });
 
-      setNewActivityEvents(events);
+      // Trace never reached PAYMENT_COMPLETED in time — refresh anyway, but leave
+      // the timeline/processing state alone in case the SSE stream is just lagging.
+      settleTimeoutId = setTimeout(() => {
+        if (!settled) {
+          setSenderRefreshTick((t) => t + 1);
+          setReceiverRefreshTick((t) => t + 1);
+        }
+      }, PAYMENT_SETTLE_TIMEOUT_MS);
 
-      setHealth((prev) => ({
-        paymentsToday:        prev.paymentsToday + 1,
-        offersRedeemed:       prev.offersRedeemed + (offer ? 1 : 0),
-        kafkaEventsProcessed: prev.kafkaEventsProcessed + steps.length,
-        failedEvents:         prev.failedEvents,
-      }));
-
-      setIsProcessing(false);
+      submitPayment(
+        {
+          sender_id: senderUser.id,
+          receiver_id: receiver.accountId,
+          amount: Math.round(netPayment * 100),
+          currency: senderUser.currency,
+          offer_id: offer?.id ?? "",
+        },
+        traceId,
+        idempotencyKey,
+      ).catch((err) => {
+        console.error("payment submission failed:", err);
+        finalize(false);
+      });
     },
-    [isProcessing, paymentReceiver, offers],
+    [isProcessing, paymentReceiver, offers, senderUser],
   );
 
   return (
@@ -307,11 +364,15 @@ export default function FlowPayDashboard() {
         navAccounts={navSwitcherItems}
         selectedNavAccountId={selectedNavId}
         onNavAccountSelect={handleNavAccountSelect}
-        statuses={TOP_NAV_STATUSES}
+        statuses={[
+          { label: "Kafka",           connected: metrics?.kafka_status === "CONNECTED" },
+          { label: "Offer Service",   connected: metrics?.offer_service_status === "CONNECTED" },
+          { label: "Payment Service", connected: metrics?.payment_service_status === "CONNECTED" },
+        ]}
         healthStats={[
-          { label: "Payments today", value: health.paymentsToday,        icon: <CreditCard className="size-3" /> },
-          { label: "Kafka events",   value: health.kafkaEventsProcessed, icon: <Activity className="size-3" /> },
-          { label: "Failed",         value: health.failedEvents,          icon: <Server className="size-3" /> },
+          { label: "Payments today", value: metrics?.payments_today ?? 0,      icon: <CreditCard className="size-3" /> },
+          { label: "Processing",     value: metrics?.payments_processing ?? 0, icon: <Activity className="size-3" /> },
+          { label: "Failed",         value: metrics?.payments_failed ?? 0,     icon: <Server className="size-3" /> },
         ]}
         theme={theme}
         onThemeToggle={toggleTheme}
@@ -334,7 +395,7 @@ export default function FlowPayDashboard() {
               transactions={senderTxs}
               onSendPayment={handleSendPayment}
               isProcessing={isProcessing}
-              balanceDelta={senderDelta}
+              onSelectTransaction={(tx) => setSelectedPaymentId(tx.paymentId)}
             />
           </div>
 
@@ -343,7 +404,13 @@ export default function FlowPayDashboard() {
             <CenterColumn
               steps={timelineSteps}
               isRunning={isProcessing}
-              stats={health}
+              stats={{
+                paymentsToday:      metrics?.payments_today ?? 0,
+                offersRedeemed:     metrics?.offers_redeemed ?? 0,
+                paymentsProcessing: metrics?.payments_processing ?? 0,
+                failedEvents:       metrics?.payments_failed ?? 0,
+              }}
+              totalTimeMs={totalTimeMs}
             />
           </div>
 
@@ -353,7 +420,8 @@ export default function FlowPayDashboard() {
               <ReceiverColumn
                 navAccount={selectedNavAccount}
                 newActivityEvents={newActivityEvents}
-                balanceDelta={receiverDelta}
+                refreshTick={receiverRefreshTick}
+                onSelectTransaction={(tx) => setSelectedPaymentId(tx.paymentId)}
               />
             )}
           </div>
@@ -369,6 +437,10 @@ export default function FlowPayDashboard() {
       <WelcomeOverlay onOpenReadme={() => setReadmeOpen(true)} />
       <ReadmeDialog open={readmeOpen} onOpenChange={setReadmeOpen} />
       <ArchitectureDialog open={archOpen} onOpenChange={setArchOpen} />
+      <PaymentDetailsModal
+        paymentId={selectedPaymentId}
+        onOpenChange={(open) => !open && setSelectedPaymentId(null)}
+      />
     </div>
   );
 }

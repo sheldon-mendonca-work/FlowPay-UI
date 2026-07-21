@@ -2,7 +2,8 @@
 
 import { Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Offer } from "@/types/types";
+import type { Currency, Offer } from "@/types/types";
+import { getCurrencySymbol } from "@/utils/currency";
 
 interface OfferPreviewProps {
   offer: Offer | null;
@@ -35,8 +36,8 @@ export function OfferPreview({ offer, amount }: OfferPreviewProps) {
     );
   }
 
-  const fmt = (n: number) =>
-    `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = (n: number, currency: Currency = 'INR') =>
+    `${getCurrencySymbol(currency)}${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   if (offer.type === "DISCOUNT") {
     const discountAmount =

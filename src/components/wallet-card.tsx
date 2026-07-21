@@ -9,11 +9,9 @@ import { useMemo } from "react";
 interface WalletCardProps {
   user: User;
   variant?: "sender" | "receiver";
-  balanceDelta?: number;
 }
 
-export function WalletCard({ user, variant = "sender", balanceDelta }: WalletCardProps) {
-  const displayBalance = user.balance + (balanceDelta ?? 0);
+export function WalletCard({ user, variant = "sender" }: WalletCardProps) {
   const currencySymbol = useMemo(() => {
     return getCurrencySymbol(user.currency)
   }, [user.currency])
@@ -57,12 +55,8 @@ export function WalletCard({ user, variant = "sender", balanceDelta }: WalletCar
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
               Available Balance
             </p>
-            <p className={cn(
-              "text-2xl font-bold font-mono tabular-nums transition-all",
-              balanceDelta && balanceDelta > 0 ? "text-success" : "text-foreground",
-              balanceDelta && balanceDelta < 0 ? "text-destructive" : ""
-            )}>
-              {currencySymbol}{displayBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <p className="text-2xl font-bold font-mono tabular-nums text-foreground">
+              {currencySymbol}{user.balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
           <span className="text-xs font-mono text-muted-foreground pb-1">{user.currency}</span>

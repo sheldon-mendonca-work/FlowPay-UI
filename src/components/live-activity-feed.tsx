@@ -2,7 +2,8 @@
 
 import { ArrowDownLeft, Coins, Tag, RotateCcw, Wifi } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { LiveActivityEvent } from "@/types/types";
+import type { Currency, LiveActivityEvent } from "@/types/types";
+import { getCurrencySymbol } from "@/utils/currency";
 
 function eventConfig(type: LiveActivityEvent["type"]) {
   switch (type) {
@@ -91,7 +92,7 @@ export function LiveActivityFeed({ events }: LiveActivityFeedProps) {
                 </p>
                 {event.amount && (
                   <span className={cn("text-xs font-mono font-semibold mt-1 block", cfg.valueClass)}>
-                    +${event.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {event.currency}
+                    {["payment_received", "cashback_received", "offer_redeemed", "refund_received"].includes(event.type) ? '+' : '-' }{getCurrencySymbol(event.currency as Currency)}{event.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {event.currency}
                   </span>
                 )}
               </div>

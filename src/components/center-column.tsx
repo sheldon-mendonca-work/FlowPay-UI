@@ -1,13 +1,13 @@
 
 
-import { Activity, BarChart3, Zap, AlertTriangle } from "lucide-react";
+import { Activity, BarChart3, Loader2, AlertTriangle } from "lucide-react";
 import { EventTimeline } from "@/components/event-timeline";
 import type { TimelineStep } from "@/types/types";
 
 interface KafkaStats {
   paymentsToday: number;
   offersRedeemed: number;
-  kafkaEventsProcessed: number;
+  paymentsProcessing: number;
   failedEvents: number;
 }
 
@@ -15,6 +15,7 @@ interface CenterColumnProps {
   steps: TimelineStep[];
   isRunning: boolean;
   stats: KafkaStats;
+  totalTimeMs?: number | null;
 }
 
 function StatTile({
@@ -50,7 +51,7 @@ function StatTile({
   );
 }
 
-export function CenterColumn({ steps, isRunning, stats }: CenterColumnProps) {
+export function CenterColumn({ steps, isRunning, stats, totalTimeMs }: CenterColumnProps) {
   return (
     <div className="flex flex-col h-full border-r border-border pb-8">
       {/* Stats row */}
@@ -69,9 +70,9 @@ export function CenterColumn({ steps, isRunning, stats }: CenterColumnProps) {
             accent="success"
           />
           <StatTile
-            icon={<Zap className="size-3.5" />}
-            label="Kafka Events"
-            value={stats.kafkaEventsProcessed}
+            icon={<Loader2 className="size-3.5" />}
+            label="Processing"
+            value={stats.paymentsProcessing}
             accent="warning"
           />
           <StatTile
@@ -85,7 +86,7 @@ export function CenterColumn({ steps, isRunning, stats }: CenterColumnProps) {
 
       {/* Timeline */}
       <div className="flex-1 overflow-hidden">
-        <EventTimeline steps={steps} isRunning={isRunning} />
+        <EventTimeline steps={steps} isRunning={isRunning} totalTimeMs={totalTimeMs} />
       </div>
     </div>
   );

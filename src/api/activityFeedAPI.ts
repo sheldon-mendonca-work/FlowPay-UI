@@ -1,62 +1,67 @@
-import type { LiveActivityEvent } from "@/types/types";
+import { protectedAxios, ApiError, BACKEND_URL } from "@/axios/axiosSetup";
+import type { ApiResponse } from "@/axios/axiosSetup";
+import { getCachedAccessToken } from "@/store/authstore";
+import type { FlowpayMetricsDTO, LiveActivityEvent } from "@/types/types";
 
-const now = Date.now();
-const minsAgo = (m: number) => new Date(now - m * 60_000);
+interface RawActivityEvent {
+  id: string;
+  type: LiveActivityEvent["type"];
+  amount?: number;
+  currency?: string;
+  from?: string;
+  message: string;
+  timestamp: string;
+}
 
-const DUMMY_ACTIVITY: LiveActivityEvent[] = [
-  {
-    id: "feed-act-1",
-    type: "payment_received",
-    amount: 250.00,
-    currency: "INR",
-    from: "Sam Rivera",
-    message: "Payment received from Sam Rivera",
-    timestamp: minsAgo(2),
-  },
-  {
-    id: "feed-act-2",
-    type: "cashback_received",
-    amount: 12.50,
-    currency: "INR",
-    message: "Cashback credited from SAVE10 offer",
-    timestamp: minsAgo(5),
-  },
-  {
-    id: "feed-act-3",
-    type: "offer_redeemed",
-    message: "Offer SAVE10 redeemed successfully",
-    timestamp: minsAgo(8),
-  },
-  {
-    id: "feed-act-4",
-    type: "payment_received",
-    amount: 1_200.00,
-    currency: "INR",
-    from: "Alex Chen",
-    message: "Payment received from Alex Chen",
-    timestamp: minsAgo(35),
-  },
-  {
-    id: "feed-act-5",
-    type: "refund_received",
-    amount: 45.00,
-    currency: "INR",
-    message: "Refund processed for order #4521",
-    timestamp: minsAgo(120),
-  },
-  {
-    id: "feed-act-6",
-    type: "payment_received",
-    amount: 800.00,
-    currency: "INR",
-    from: "Jordan Blake",
-    message: "Payment received from Jordan Blake",
-    timestamp: minsAgo(240),
-  },
-];
+interface LiveFeedResponse {
+  events: RawActivityEvent[];
+}
 
-// POST /activity/feed { accountId }
-export async function fetchActivityFeed(_accountId: string): Promise<LiveActivityEvent[]> {
-  // TODO: replace with protectedAxios.post('/activity/feed', { accountId: _accountId })
-  return DUMMY_ACTIVITY;
+// GET /accounts/livefeed/{id}
+export async function fetchActivityFeed(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<LiveActivityEvent[]> {
+  const { data: envelope } = await protectedAxios.get<ApiResponse<LiveFeedResponse>>(
+    `/accounts/livefeed/${accountId}`,
+    { signal },
+  );
+
+  if (!envelope.success || envelope.code !== 200) {
+    throw new ApiError(
+      envelope.code.toString(),
+      envelope.message ?? "Failed to fetch activity feed",
+    );
+  }
+
+  return (envelope.data?.events ?? []).map((e) => ({
+    id: e.id,
+    type: e.type,
+    amount: e.amount,
+    currency: e.currency as LiveActivityEvent["currency"],
+    from: e.from,
+    message: e.message,
+    timestamp: new Date(e.timestamp),
+  }));
+}
+
+
+export function getFlowpayMetrics(
+  onUpdate: (dto: FlowpayMetricsDTO) => void,
+): () => void {
+  const token = getCachedAccessToken();
+  const url = new URL(`${BACKEND_URL}/notification/fp/metrics`);
+  if (token) url.searchParams.set("token", token);
+
+  const source = new EventSource(url);
+
+  source.onmessage = (event) => {
+    try {
+      onUpdate(JSON.parse(event.data) as FlowpayMetricsDTO);
+    } catch {
+      // malformed frame — the next snapshot resyncs state
+    }
+  };
+
+  return () => source.close();
 }

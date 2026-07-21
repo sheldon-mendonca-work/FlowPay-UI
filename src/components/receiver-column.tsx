@@ -4,41 +4,62 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { WalletCard } from "@/components/wallet-card";
 import { LiveActivityFeed } from "@/components/live-activity-feed";
 import { TransactionTable } from "@/components/transaction-table";
-import { fetchActivityFeed } from "@/api/activityFeedAPI";
+import { fetchAccountBalance } from "@/api/accountBalanceAPI";
 import { fetchTransactions } from "@/api/transactionsAPI";
 import type { NavAccount, LiveActivityEvent, Transaction } from "@/types/types";
 
 interface ReceiverColumnProps {
   navAccount: NavAccount;
   newActivityEvents: LiveActivityEvent[];
-  balanceDelta: number;
+  refreshTick?: number;
+  onSelectTransaction?: (tx: Transaction) => void;
 }
 
 export function ReceiverColumn({
   navAccount,
   newActivityEvents,
-  balanceDelta,
+  refreshTick,
+  onSelectTransaction,
 }: ReceiverColumnProps) {
   const [activityEvents, setActivityEvents] = useState<LiveActivityEvent[]>([]);
+  const [balance, setBalance] = useState(navAccount.balance);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [txPage, setTxPage] = useState(1);
   const [txHasMore, setTxHasMore] = useState(false);
   const [txTotal, setTxTotal] = useState(0);
 
-  // Fetch activity feed when account changes
+  // Fetch balance on mount, on account change, and whenever a payment settles
   useEffect(() => {
-    fetchActivityFeed(navAccount.id).then(setActivityEvents);
-    setTxPage(1);
-  }, [navAccount.id]);
+    const controller = new AbortController();
+    fetchAccountBalance(navAccount.id, controller.signal)
+      .then((bal) => {
+        if (!controller.signal.aborted) setBalance(bal.balance);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) console.error("Failed to fetch receiver balance:", err);
+      });
+    return () => controller.abort();
+  }, [navAccount.id, refreshTick]);
 
-  // Fetch transactions when account or page changes
+  // Reset to page 1 when the account changes or a payment settles
   useEffect(() => {
-    fetchTransactions(navAccount.id, txPage).then((result) => {
-      setTransactions(result.items);
-      setTxHasMore(result.hasMore);
-      setTxTotal(result.total);
-    });
-  }, [navAccount.id, txPage]);
+    setTxPage(1);
+  }, [navAccount.id, refreshTick]);
+
+  // Fetch transactions when account, page, or refresh tick changes
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchTransactions(navAccount.id, txPage, undefined, controller.signal)
+      .then((result) => {
+        setTransactions(result.items);
+        setTxHasMore(result.hasMore);
+        setTxTotal(result.total);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) console.error("Failed to fetch transactions:", err);
+      });
+    return () => controller.abort();
+  }, [navAccount.id, txPage, refreshTick]);
 
   // Prepend new events from payment flow
   useEffect(() => {
@@ -60,7 +81,7 @@ export function ReceiverColumn({
 
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-4 p-4">
-          <WalletCard user={navAccount} variant="receiver" balanceDelta={balanceDelta} />
+          <WalletCard user={{ ...navAccount, balance }} variant="receiver" />
 
           <LiveActivityFeed events={activityEvents} />
 
@@ -73,7 +94,7 @@ export function ReceiverColumn({
               <span className="text-[10px] text-muted-foreground font-mono">{txTotal} total</span>
             </div>
 
-            <TransactionTable transactions={transactions} bare />
+            <TransactionTable transactions={transactions} bare onRowClick={onSelectTransaction} />
 
             {/* Pagination controls */}
             {totalPages > 1 && (

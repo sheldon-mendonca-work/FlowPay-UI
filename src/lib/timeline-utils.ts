@@ -1,207 +1,159 @@
-import type { TimelineStep, Offer, PaymentResult } from "../types/types";
-import { generateId } from "./mock-data";
+import type {
+  TimelineStep,
+  TimelineStepState,
+  Offer,
+  PaymentTimelineStepName,
+  PaymentTimelineDTO,
+  NotificationStatus,
+} from "../types/types";
 
-function makeStep(
-  name: string,
-  service: string,
-  overrides?: Partial<TimelineStep>
-): TimelineStep {
+export function generateId(prefix: string): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+}
+
+export function generateIdempotencyKey(): string {
+  return `idem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+
+const STEP_META: Record<PaymentTimelineStepName, { name: string; service: string }> = {
+  PAYMENT_INITIATED:    { name: "Payment Initiated",      service: "payment-service" },
+  OFFER_EVALUATED:      { name: "Offer Evaluated",        service: "offer-service" },
+  OFFER_RESERVED:       { name: "Offer Reserved",         service: "offer-service" },
+  PAYMENT_VALIDATED:    { name: "Payment Validated",      service: "payment-service" },
+  ACCOUNTS_UPDATED:     { name: "Accounts Updated",       service: "ledger-service" },
+  PAYMENT_PERSISTED:    { name: "Payment Persisted",      service: "payment-service" },
+  OUTBOX_EVENT_CREATED: { name: "Outbox Event Created",   service: "outbox-worker" },
+  KAFKA_PUBLISHED:      { name: "Kafka Published",        service: "kafka-broker" },
+  TRANSACTIONS_COMPLETED: { name: "Transactions Completed", service: "ledger-service" },
+  OFFER_REDEEMED:       { name: "Offer Redeemed",         service: "offer-service" },
+  PROMO_POOL_DEBITED:   { name: "Promotion Pool Debited", service: "promo-service" },
+  CASHBACK_CREDITED:    { name: "Cashback Credited",      service: "ledger-service" },
+  PAYMENT_COMPLETED:    { name: "Completed",              service: "payment-service" },
+};
+
+const NO_OFFER_STEPS: PaymentTimelineStepName[] = [
+  "PAYMENT_INITIATED",
+  "KAFKA_PUBLISHED",
+  "PAYMENT_VALIDATED",
+  "ACCOUNTS_UPDATED",
+  "PAYMENT_PERSISTED",
+  "OUTBOX_EVENT_CREATED",
+  "PAYMENT_COMPLETED",
+];
+
+const DISCOUNT_STEPS: PaymentTimelineStepName[] = [
+  "PAYMENT_INITIATED",
+  "KAFKA_PUBLISHED",
+  "OFFER_EVALUATED",
+  "OFFER_RESERVED",
+  "PAYMENT_VALIDATED",
+  "ACCOUNTS_UPDATED",
+  "PAYMENT_PERSISTED",
+  "OUTBOX_EVENT_CREATED",
+  "OFFER_REDEEMED",
+  "PAYMENT_COMPLETED",
+];
+
+const CASHBACK_STEPS: PaymentTimelineStepName[] = [
+  "PAYMENT_INITIATED",
+  "KAFKA_PUBLISHED",
+  "OFFER_EVALUATED",
+  "OFFER_RESERVED",
+  "PAYMENT_VALIDATED",
+  "ACCOUNTS_UPDATED",
+  "PAYMENT_PERSISTED",
+  "OUTBOX_EVENT_CREATED",
+  "OFFER_REDEEMED",
+  "PROMO_POOL_DEBITED",
+  "CASHBACK_CREDITED",
+  "PAYMENT_COMPLETED",
+];
+
+function makeStep(stepName: PaymentTimelineStepName): TimelineStep {
+  const meta = STEP_META[stepName];
   return {
     id: generateId("step"),
-    name,
-    service,
+    stepName,
+    name: meta.name,
+    service: meta.service,
     state: "pending",
     timestamp: null,
-    ...overrides,
   };
 }
 
+/** Ordered skeleton of pending steps for the pipeline this payment will follow. */
 export function buildTimelineSteps(offer?: Offer | null): TimelineStep[] {
-  if (!offer) {
-    return [
-      makeStep("Payment Initiated", "payment-service"),
-      makeStep("Payment Validated", "payment-service"),
-      makeStep("Accounts Updated", "ledger-service"),
-      makeStep("Payment Persisted", "payment-service"),
-      makeStep("Outbox Event Created", "outbox-worker"),
-      makeStep("Kafka Published", "kafka-broker"),
-      makeStep("Completed", "payment-service"),
-    ];
-  }
-
-  if (offer.type === "DISCOUNT") {
-    return [
-      makeStep("Payment Initiated", "payment-service"),
-      makeStep("Offer Evaluated", "offer-service"),
-      makeStep("Offer Reserved", "offer-service"),
-      makeStep("Payment Validated", "payment-service"),
-      makeStep("Accounts Updated", "ledger-service"),
-      makeStep("Payment Persisted", "payment-service"),
-      makeStep("Outbox Event Created", "outbox-worker"),
-      makeStep("Kafka Published", "kafka-broker"),
-      makeStep("Offer Redeemed", "offer-service"),
-      makeStep("Completed", "payment-service"),
-    ];
-  }
-
-  // CASHBACK
-  return [
-    makeStep("Payment Initiated", "payment-service"),
-    makeStep("Offer Evaluated", "offer-service"),
-    makeStep("Offer Reserved", "offer-service"),
-    makeStep("Payment Validated", "payment-service"),
-    makeStep("Accounts Updated", "ledger-service"),
-    makeStep("Payment Persisted", "payment-service"),
-    makeStep("Outbox Event Created", "outbox-worker"),
-    makeStep("Kafka Published", "kafka-broker"),
-    makeStep("Offer Redeemed", "offer-service"),
-    makeStep("Promotion Pool Debited", "promo-service"),
-    makeStep("Cashback Credited", "ledger-service"),
-    makeStep("Completed", "payment-service"),
-  ];
+  const order = !offer
+    ? NO_OFFER_STEPS
+    : offer.type === "DISCOUNT"
+    ? DISCOUNT_STEPS
+    : CASHBACK_STEPS;
+  return order.map(makeStep);
 }
 
-function buildRawPayload(
-  name: string,
-  result: PaymentResult,
-  extra?: Record<string, unknown>
-): Record<string, unknown> {
-  const eventTypeMap: Record<string, string> = {
-    "Payment Initiated":      "PAYMENT_INITIATED",
-    "Offer Evaluated":        "OFFER_EVALUATED",
-    "Offer Reserved":         "OFFER_RESERVED",
-    "Payment Validated":      "PAYMENT_VALIDATED",
-    "Accounts Updated":       "ACCOUNTS_UPDATED",
-    "Payment Persisted":      "PAYMENT_PERSISTED",
-    "Outbox Event Created":   "OUTBOX_EVENT_CREATED",
-    "Kafka Published":        "KAFKA_PUBLISHED",
-    "Offer Redeemed":         "OFFER_REDEEMED",
-    "Promotion Pool Debited": "PROMO_POOL_DEBITED",
-    "Cashback Credited":      "CASHBACK_CREDITED",
-    "Completed":              "PAYMENT_COMPLETED",
-  };
+const PAYMENT_DETAILS_STEPS: PaymentTimelineStepName[] = [
+  "PAYMENT_INITIATED",
+  "OFFER_EVALUATED",
+  "OFFER_RESERVED",
+  "PAYMENT_VALIDATED",
+  "ACCOUNTS_UPDATED",
+  "PAYMENT_PERSISTED",
+  "TRANSACTIONS_COMPLETED",
+  "OFFER_REDEEMED",
+  "PAYMENT_COMPLETED",
+];
 
-  return {
-    eventType: eventTypeMap[name] ?? name.toUpperCase().replace(/\s+/g, "_"),
-    eventId: generateId("evt"),
-    traceId: result.traceId,
-    requestId: result.requestId,
-    paymentId: result.paymentId,
-    timestamp: new Date().toISOString(),
-    version: "1.0",
-    source: "flowpay-core",
-    ...(result.offerId ? { offerId: result.offerId } : {}),
-    ...(result.reservationId ? { reservationId: result.reservationId } : {}),
-    ...(result.redemptionId ? { redemptionId: result.redemptionId } : {}),
-    idempotencyKey: result.idempotencyKey,
-    ...extra,
-  };
+const PAYMENT_DETAILS_STEPS_NO_OFFER: PaymentTimelineStepName[] = PAYMENT_DETAILS_STEPS.filter(
+  (s) => s !== "OFFER_EVALUATED" && s !== "OFFER_RESERVED" && s !== "OFFER_REDEEMED",
+);
+
+/** Ordered skeleton for the Payment Details page timeline — offer steps hidden when there's no offer. */
+export function buildPaymentDetailsTimelineSteps(hasOffer: boolean): TimelineStep[] {
+  const order = hasOffer ? PAYMENT_DETAILS_STEPS : PAYMENT_DETAILS_STEPS_NO_OFFER;
+  return order.map(makeStep);
 }
 
-export async function* animateTimeline(
+const STATUS_TO_STATE: Record<NotificationStatus, TimelineStepState> = {
+  CREATED:    "processing",
+  PROCESSING: "processing",
+  SUCCESS:    "success",
+  FAILED:     "failed",
+};
+
+/**
+ * Overlay a PaymentTimelineDTO snapshot pushed over the notification SSE
+ * stream onto the local step skeleton. Steps absent from `timeline_steps`
+ * haven't been reached by the backend yet and stay "pending".
+ */
+export function mergeTimelineSnapshot(
   steps: TimelineStep[],
-  result: PaymentResult,
-  onStep: (updated: TimelineStep[]) => void
-): AsyncGenerator<void> {
-  const working = steps.map((s) => ({ ...s }));
+  dto: PaymentTimelineDTO,
+): TimelineStep[] {
+  const rowByStep = new Map(dto.timeline_steps.map((row) => [row.step_name, row]));
 
-  const metaByName: Record<string, Partial<TimelineStep>> = {
-    "Payment Initiated": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      requestId: result.requestId,
-      paymentId: result.paymentId,
-      idempotencyKey: result.idempotencyKey,
-    },
-    "Offer Evaluated": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      offerId: result.offerId,
-    },
-    "Offer Reserved": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      offerId: result.offerId,
-      reservationId: result.reservationId,
-      idempotencyKey: result.idempotencyKey,
-    },
-    "Payment Validated": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      paymentId: result.paymentId,
-    },
-    "Accounts Updated": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      paymentId: result.paymentId,
-    },
-    "Payment Persisted": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      paymentId: result.paymentId,
-    },
-    "Outbox Event Created": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      paymentId: result.paymentId,
-    },
-    "Kafka Published": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      paymentId: result.paymentId,
-    },
-    "Offer Redeemed": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      offerId: result.offerId,
-      reservationId: result.reservationId,
-      redemptionId: result.redemptionId,
-    },
-    "Promotion Pool Debited": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      offerId: result.offerId,
-    },
-    "Cashback Credited": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      paymentId: result.paymentId,
-    },
-    "Completed": {
-      eventId: generateId("evt"),
-      traceId: result.traceId,
-      paymentId: result.paymentId,
-    },
-  };
+  return steps.map((step) => {
+    const row = step.stepName ? rowByStep.get(step.stepName) : undefined;
+    if (!row) return step;
 
-  for (let i = 0; i < working.length; i++) {
-    // Mark as processing
-    working[i] = { ...working[i], state: "processing", timestamp: new Date() };
-    onStep([...working]);
-    yield;
-
-    await delay(350 + Math.random() * 300);
-
-    const meta = metaByName[working[i].name] ?? {};
-    const rawPayload = buildRawPayload(working[i].name, result, {
-      ...(meta.eventId ? { eventId: meta.eventId } : {}),
-    });
-
-    // Mark as success
-    working[i] = {
-      ...working[i],
-      state: "success",
-      timestamp: new Date(),
-      ...meta,
-      rawPayload,
+    return {
+      ...step,
+      state: STATUS_TO_STATE[row.status],
+      timestamp: row.completed_time ? new Date(row.completed_time) : step.timestamp,
+      stepTimeMs: row.completed_step_time,
+      traceId: dto.trace_id,
+      paymentId: dto.payment_id,
+      rawPayload: { ...row, trace_id: dto.trace_id, payment_id: dto.payment_id },
     };
-    onStep([...working]);
-    yield;
-
-    await delay(120 + Math.random() * 180);
-  }
+  });
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function isTimelineFailed(dto: PaymentTimelineDTO): boolean {
+  return dto.status === "FAILED";
+}
+
+export function isTimelineComplete(dto: PaymentTimelineDTO): boolean {
+  return dto.timeline_steps.some(
+    (row) => row.step_name === "PAYMENT_COMPLETED" && row.status === "SUCCESS",
+  );
 }

@@ -1,8 +1,8 @@
 export type OfferType = "DISCOUNT" | "CASHBACK";
 export type OfferStatus = "ACTIVE" | "EXHAUSTED" | "EXPIRED";
-export type TxStatus = "COMPLETED" | "PENDING" | "FAILED" | "PROCESSING";
+export type TxStatus = "COMPLETED" | "SUCCESS" | "PENDING" | "FAILED" | "PROCESSING";
 export type TimelineStepState = "pending" | "processing" | "success" | "failed";
-export type Currency = "INR" | "INR" | "GBP";
+export type Currency = "INR" | "USD" | "GBP";
 
 export interface Offer {
   id: string;
@@ -27,6 +27,7 @@ export interface User {
 
 export interface Transaction {
   id: string;
+  paymentId: string;
   time: Date;
   counterparty: string;
   amount: number;
@@ -41,6 +42,7 @@ export interface TimelineStep {
   service: string;
   state: TimelineStepState;
   timestamp: Date | null;
+  stepName?: PaymentTimelineStepName;
   eventId?: string;
   traceId?: string;
   requestId?: string;
@@ -49,8 +51,47 @@ export interface TimelineStep {
   reservationId?: string;
   redemptionId?: string;
   idempotencyKey?: string;
+  /** Step duration in ms, from the backend's completed_step_time. Undefined when not yet received, null when the backend sent null. */
+  stepTimeMs?: number | null;
   /** Raw JSON payload shown in the event inspector drawer */
   rawPayload?: Record<string, unknown>;
+}
+
+// ── Payment notification timeline (SSE) ───────────────────────────────────────
+// Mirrors the backend's PaymentTimelineDTO pushed over
+// GET /notification/timeline/{trace_id}.
+
+export type NotificationStatus = "CREATED" | "PROCESSING" | "SUCCESS" | "FAILED";
+
+export type PaymentTimelineStepName =
+  | "PAYMENT_INITIATED"
+  | "OFFER_EVALUATED"
+  | "OFFER_RESERVED"
+  | "PAYMENT_VALIDATED"
+  | "ACCOUNTS_UPDATED"
+  | "PAYMENT_PERSISTED"
+  | "OUTBOX_EVENT_CREATED"
+  | "KAFKA_PUBLISHED"
+  | "TRANSACTIONS_COMPLETED"
+  | "OFFER_REDEEMED"
+  | "PROMO_POOL_DEBITED"
+  | "CASHBACK_CREDITED"
+  | "PAYMENT_COMPLETED";
+
+export interface PaymentTimelineStepDTO {
+  step_name: PaymentTimelineStepName;
+  status: NotificationStatus;
+  completed_time: string;
+  completed_step_time: number | null;
+}
+
+export interface PaymentTimelineDTO {
+  trace_id: string;
+  payment_id: string;
+  status: NotificationStatus;
+  timeline_steps: PaymentTimelineStepDTO[];
+  /** Total elapsed time in ms — only meaningful once status is SUCCESS or FAILED. */
+  total_time: number | null;
 }
 
 // ── Company / merchant types ──────────────────────────────────────────────────
@@ -140,6 +181,7 @@ export interface ReceiverResult {
   id: string;
   name: string;
   accountId: string;
+  paymentHandle: string;
   currency: Currency;
 }
 
@@ -151,15 +193,58 @@ export interface PaginatedResult<T> {
   hasMore: boolean;
 }
 
-export interface PaymentResult {
-  paymentId: string;
-  traceId: string;
-  requestId: string;
-  offerId?: string;
-  reservationId?: string;
-  redemptionId?: string;
-  idempotencyKey: string;
-  senderDelta: number;
-  receiverDelta: number;
-  cashbackAmount?: number;
+// ── Payment Details page ──────────────────────────────────────────────────────
+
+export type OfferRedemptionStatus = "REDEEMED" | "PENDING" | "FAILED";
+
+export interface PaymentOfferDetails {
+  code: string;
+  type: OfferType;
+  discountAmount: number;
+  cashbackAmount: number;
+  status: OfferRedemptionStatus;
+  redeemedAt: Date | null;
+}
+
+export interface PaymentDetails {
+  id: string;
+  amount: number;
+  currency: Currency;
+  senderName: string;
+  senderHandle: string;
+  receiverName: string;
+  receiverHandle: string;
+  status: TxStatus;
+  createdAt: Date;
+  completedAt: Date | null;
+  paymentMethod: string;
+  offer: PaymentOfferDetails | null;
+}
+
+export type AccountingEntryType = "DEBIT" | "CREDIT";
+
+export interface AccountingTransaction {
+  id: string;
+  category: AccountingEntryType;
+  amount: number;
+  currency: Currency;
+  account: string;
+  createdAt: Date;
+}
+
+
+export interface FlowpayMetricsDTO {
+  payments_total: number;
+  payments_success: number;
+  payments_failed: number;
+  payments_processing: number;
+
+  offers_reserved: number;
+  offers_redeemed: number;
+
+  payments_today: number;
+
+  kafka_status: "CONNECTED" | "DISCONNECTED";
+  offer_service_status: "CONNECTED" | "DISCONNECTED";
+  payment_service_status: "CONNECTED" | "DISCONNECTED";
 }

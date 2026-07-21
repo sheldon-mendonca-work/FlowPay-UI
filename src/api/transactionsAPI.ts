@@ -1,42 +1,72 @@
-import type { Transaction, PaginatedResult } from "@/types/types";
+import { protectedAxios, ApiError } from "@/axios/axiosSetup";
+import type { ApiResponse } from "@/axios/axiosSetup";
+import type { Transaction, PaginatedResult, TxStatus } from "@/types/types";
 
-const now = Date.now();
-const minsAgo = (m: number) => new Date(now - m * 60_000);
+interface RawTransaction {
+  transaction_id: string;
+  payment_id: string;
+  type: string;
+  transaction_category: "DEBIT" | "CREDIT";
+  amount: number; // minor units, e.g. paise
+  currency: string;
+  status: TxStatus;
+  created_at: string;
+}
 
-const DUMMY_TRANSACTIONS: Transaction[] = [
-  { id: "tx-r1",  time: minsAgo(2),    counterparty: "Sam Rivera",   amount: 250.00,    currency: "INR", status: "COMPLETED",  direction: "in" },
-  { id: "tx-r2",  time: minsAgo(8),    counterparty: "Alex Chen",    amount: 1_200.00,  currency: "INR", status: "COMPLETED",  direction: "in" },
-  { id: "tx-r3",  time: minsAgo(25),   counterparty: "Jordan Blake", amount: 75.50,     currency: "INR", status: "COMPLETED",  direction: "in" },
-  { id: "tx-r4",  time: minsAgo(60),   counterparty: "Merchant XYZ", amount: 120.00,    currency: "INR", status: "COMPLETED",  direction: "out" },
-  { id: "tx-r5",  time: minsAgo(120),  counterparty: "Jordan Blake", amount: 800.00,    currency: "INR", status: "COMPLETED",  direction: "in" },
-  { id: "tx-r6",  time: minsAgo(180),  counterparty: "Service Co",   amount: 45.00,     currency: "INR", status: "PROCESSING", direction: "out" },
-  { id: "tx-r7",  time: minsAgo(300),  counterparty: "Sam Rivera",   amount: 350.00,    currency: "INR", status: "COMPLETED",  direction: "in" },
-  { id: "tx-r8",  time: minsAgo(480),  counterparty: "Alex Chen",    amount: 90.00,     currency: "INR", status: "FAILED",     direction: "out" },
-  { id: "tx-r9",  time: minsAgo(720),  counterparty: "GloboPay",     amount: 2_200.00,  currency: "INR", status: "COMPLETED",  direction: "in" },
-  { id: "tx-r10", time: minsAgo(1080), counterparty: "Sam Rivera",   amount: 150.00,    currency: "INR", status: "COMPLETED",  direction: "in" },
-  { id: "tx-r11", time: minsAgo(1440), counterparty: "Vendor A",     amount: 600.00,    currency: "INR", status: "COMPLETED",  direction: "out" },
-  { id: "tx-r12", time: minsAgo(1800), counterparty: "Alex Chen",    amount: 425.00,    currency: "INR", status: "PENDING",    direction: "in" },
-  { id: "tx-r13", time: minsAgo(2160), counterparty: "Jordan Blake", amount: 1_100.00,  currency: "INR", status: "COMPLETED",  direction: "in" },
-  { id: "tx-r14", time: minsAgo(2880), counterparty: "Platform Fee", amount: 25.00,     currency: "INR", status: "COMPLETED",  direction: "out" },
-  { id: "tx-r15", time: minsAgo(4320), counterparty: "Sam Rivera",   amount: 500.00,    currency: "INR", status: "COMPLETED",  direction: "in" },
-];
+interface TransactionListResponse {
+  transactions: RawTransaction[];
+  total: number;
+  page: number;
+  page_size: number;
+}
 
 const PAGE_SIZE = 5;
 
-// POST /transactions/list { accountId, page, pageSize }
+// No counterparty name on the wire yet — fall back to a readable transaction type.
+function humanizeType(type: string): string {
+  return type
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// GET /accounts/transactions/{accountID}?page=x&size=y
 export async function fetchTransactions(
-  _accountId: string,
+  accountId: string,
   page: number = 1,
   pageSize: number = PAGE_SIZE,
+  signal?: AbortSignal,
 ): Promise<PaginatedResult<Transaction>> {
-  // TODO: replace with protectedAxios.post('/transactions/list', { accountId: _accountId, page, pageSize })
-  const start = (page - 1) * pageSize;
-  const items = DUMMY_TRANSACTIONS.slice(start, start + pageSize);
+  const { data: envelope } = await protectedAxios.get<ApiResponse<TransactionListResponse>>(
+    `/accounts/transactions/${accountId}`,
+    { params: { page, size: pageSize }, signal },
+  );
+
+  if (!envelope.success || envelope.code !== 200) {
+    throw new ApiError(
+      envelope.code.toString(),
+      envelope.message ?? "Failed to fetch transactions",
+    );
+  }
+
+  const raw = envelope.data?.transactions ?? [];
+  const total = envelope.data?.total ?? raw.length;
+
   return {
-    items,
-    total: DUMMY_TRANSACTIONS.length,
+    items: raw.map((tx) => ({
+      id: tx.transaction_id,
+      paymentId: tx.payment_id,
+      time: new Date(tx.created_at),
+      counterparty: humanizeType(tx.type),
+      amount: tx.amount / 100,
+      currency: tx.currency as Transaction["currency"],
+      status: tx.status,
+      direction: tx.transaction_category === "DEBIT" ? "out" : "in",
+    })),
+    total,
     page,
     pageSize,
-    hasMore: start + pageSize < DUMMY_TRANSACTIONS.length,
+    hasMore: page * pageSize < total,
   };
 }

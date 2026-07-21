@@ -7,12 +7,16 @@ function statusConfig(s: TxStatus) {
   switch (s) {
     case "COMPLETED":
       return { label: "completed", color: "text-success", dot: "bg-success" };
-    case "PENDING":
-      return { label: "pending",   color: "text-warning", dot: "bg-warning" };
-    case "PROCESSING":
-      return { label: "processing",color: "text-info",    dot: "bg-info" };
-    case "FAILED":
-      return { label: "failed",    color: "text-destructive", dot: "bg-destructive" };
+    case "SUCCESS":
+      return { label: "success", color: "text-success", dot: "bg-success" };
+      case "PROCESSING":
+        return { label: "processing",color: "text-info",    dot: "bg-info" };
+      case "FAILED":
+          return { label: "failed",    color: "text-destructive", dot: "bg-destructive" };
+      case "PENDING":
+        return { label: "pending",   color: "text-warning", dot: "bg-warning" };
+  default:
+        return { label: "pending",   color: "text-warning", dot: "bg-warning" };
   }
 }
 
@@ -33,6 +37,8 @@ interface TransactionTableProps {
   fixedHeight?: boolean;
   /** Render only the rows — no outer border card or title (for embedding in a parent card) */
   bare?: boolean;
+  /** Opens the Payment Details modal for the clicked row */
+  onRowClick?: (tx: Transaction) => void;
 }
 
 export function TransactionTable({
@@ -40,6 +46,7 @@ export function TransactionTable({
   title = "Recent Transactions",
   fixedHeight = false,
   bare = false,
+  onRowClick,
 }: TransactionTableProps) {
   if (fixedHeight) {
     return (
@@ -70,7 +77,11 @@ export function TransactionTable({
             return (
               <div
                 key={tx.id}
-                className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-4 py-2 border-b border-border/25 last:border-0 hover:bg-accent/20 transition-colors"
+                onClick={() => onRowClick?.(tx)}
+                className={cn(
+                  "grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-4 py-2 border-b border-border/25 last:border-0 hover:bg-accent/20 transition-colors",
+                  onRowClick && "cursor-pointer"
+                )}
               >
                 <span className="text-[11px] text-muted-foreground font-mono tabular-nums">
                   {formatTime(tx.time)}
@@ -79,14 +90,14 @@ export function TransactionTable({
                 <span
                   className={cn(
                     "text-[11px] font-mono font-medium tabular-nums",
-                    tx.direction === "out" ? "text-foreground" : "text-success"
+                    tx.direction === "out" ? "text-destructive" : "text-success"
                   )}
                 >
                   {tx.direction === "out" ? "-" : "+"}$
                   {tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </span>
                 <div className="flex items-center gap-1">
-                  <span className={cn("size-1.5 rounded-full shrink-0", cfg.dot)} />
+                  <span className={cn("size-1.5 rounded-full shrink-0", cfg?.dot || "")} />
                   <span className={cn("text-[10px] font-mono capitalize", cfg.color)}>{cfg.label}</span>
                 </div>
               </div>
@@ -117,7 +128,11 @@ export function TransactionTable({
         return (
           <div
             key={tx.id}
-            className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-4 py-2.5 border-b border-border/30 last:border-0 hover:bg-accent/20 transition-colors"
+            onClick={() => onRowClick?.(tx)}
+            className={cn(
+              "grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-4 py-2.5 border-b border-border/30 last:border-0 hover:bg-accent/20 transition-colors",
+              onRowClick && "cursor-pointer"
+            )}
           >
             <span className="text-[11px] text-muted-foreground font-mono tabular-nums">
               {formatTime(tx.time)}
@@ -126,7 +141,7 @@ export function TransactionTable({
             <span
               className={cn(
                 "text-[11px] font-mono font-medium tabular-nums",
-                tx.direction === "out" ? "text-foreground" : "text-success"
+                tx.direction === "out" ? "text-destructive" : "text-success"
               )}
             >
               {tx.direction === "out" ? "-" : "+"}$
