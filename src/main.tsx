@@ -4,6 +4,9 @@ import { SnackbarProvider } from 'notistack';
 import './index.css';
 import './globals.css';
 import App from './App.tsx';
+import { initDeployment } from './deployment/initDeployment';
+
+initDeployment();
 
 const queryClient = new QueryClient({
   defaultOptions: {

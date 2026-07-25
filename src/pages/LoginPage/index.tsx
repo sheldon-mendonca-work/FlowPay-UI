@@ -26,8 +26,11 @@ import { RightPanel } from "./rightPanel";
 import { useAccountsListQuery } from "@/api/accountsAPI";
 import { loginDefault } from "@/api/authAPI";
 import { useAuthStore } from "@/store/authstore";
+import { useDeploymentStore } from "@/store/deploymentstore";
 import { type LoginCompanyUser, type LoginAccount } from "@/types/login-page-types";
 import { fetchUserInfo } from "@/api/userInfoAPI";
+import { ArchitectureDialog } from "@/components/architecture-dialog";
+import { DeploymentReadyBanner } from "@/components/deployment-ready-banner";
 
 
 const ARCH_FLOW = [
@@ -53,9 +56,12 @@ function LoginPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [archOpen, setArchOpen] = useState<boolean>(false);
 
-  const canSubmit = mode === "ACCOUNT" ? !!selectedAccount : !!selectedCompanyUser;
-  
+  const deploymentReady = useDeploymentStore((s) => s.ready);
+  const canSubmit =
+    (mode === "ACCOUNT" ? !!selectedAccount : !!selectedCompanyUser) && deploymentReady;
+
   // Pass enabled:false here to defer fetching until a condition is met,
   // e.g. useUserListQuery({ enabled: !!someToken }).
   // Default (true) fetches immediately after mount.
@@ -173,6 +179,8 @@ function LoginPage() {
 
   return (
     <div className="relative min-h-dvh bg-background text-foreground">
+      <DeploymentReadyBanner onOpenArchitecture={() => setArchOpen(true)} />
+
       {/* Theme toggle */}
       <button
         type="button"
@@ -207,6 +215,8 @@ function LoginPage() {
       <Footer />
 
       <ReadmeDialog open={readmeOpen} onOpenChange={setReadmeOpen} />
+
+      <ArchitectureDialog open={archOpen} onOpenChange={setArchOpen} />
 
       {firstVisit && (
         <FirstVisitOverlay

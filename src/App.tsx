@@ -2,6 +2,7 @@ import "./App.css";
 import FlowPayDashboard from "@/pages/FlowPayDashboard";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import LoginPage from "@/pages/LoginPage";
+import MetricsPage from "@/pages/Metrics";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 function App() {
@@ -9,6 +10,10 @@ function App() {
     {
       path: "/",
       element: <LoginPage />,
+    },
+    {
+      path: "/metrics",
+      element: <MetricsPage />,
     },
     {
       path: "/payment",

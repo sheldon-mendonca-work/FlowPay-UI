@@ -43,6 +43,13 @@ export const protectedAxios: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// Called once the deployment/status poll reports the instance is RUNNING, to
+// point both instances at the freshly provisioned instance's public IP.
+export function setBackendBaseUrl(baseUrl: string) {
+  publicAxios.defaults.baseURL = baseUrl;
+  protectedAxios.defaults.baseURL = baseUrl;
+}
+
 // ── Request interceptor ─────────────────────────────────────────────────────
 // Reads the current access token from the store at request time (not at
 // interceptor registration) so every call uses the freshest token.
