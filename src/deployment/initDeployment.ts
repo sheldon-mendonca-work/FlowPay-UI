@@ -11,7 +11,8 @@ async function pollUntilRunning(ip: string) {
     useDeploymentStore.getState().setStatus(status);
 
     if (status.status === 'RUNNING') {
-      const baseUrl = `http://${status.publicIp}:${DEPLOYMENT_PORT}`;
+      // const baseUrl = `http://${status.publicIp}:${DEPLOYMENT_PORT}`;
+      const baseUrl = `http://${ip}:${DEPLOYMENT_PORT}`;
       setBackendBaseUrl(baseUrl);
       useDeploymentStore.getState().setReady(baseUrl);
       return;
