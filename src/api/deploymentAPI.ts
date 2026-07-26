@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const DEPLOYMENT_PORT = 8000;
+// const DEPLOYMENT_PORT = 8000;
 
 export interface DeploymentStatus {
   status: string;
