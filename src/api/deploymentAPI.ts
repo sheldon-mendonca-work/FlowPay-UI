@@ -3,14 +3,14 @@ import axios from 'axios';
 const DEPLOYMENT_PORT = 8000;
 
 export interface DeploymentStatus {
-  state: string;
+  status: string;
   instanceId: string;
   publicIp: string;
   healthy: boolean;
 }
 
 function deploymentUrl(ip: string, path: string) {
-  return `http://${ip}:${DEPLOYMENT_PORT}${path}`;
+  return `${ip}${path}`;
 }
 
 export function startDeployment(ip: string) {
