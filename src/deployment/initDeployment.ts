@@ -3,7 +3,7 @@ import { getDeploymentStatus, startDeployment } from '@/api/deploymentAPI';
 import { useDeploymentStore } from '@/store/deploymentstore';
 
 const POLL_INTERVAL_MS = 5000;
-const DEPLOYMENT_PORT = 8000;
+// const DEPLOYMENT_PORT = 8000;
 
 async function pollUntilRunning(ip: string) {
   try {
