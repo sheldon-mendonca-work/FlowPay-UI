@@ -21,3 +21,7 @@ export async function getDeploymentStatus(ip: string): Promise<DeploymentStatus>
   const { data } = await axios.get<DeploymentStatus>(deploymentUrl(ip, '/deployment/status'));
   return data;
 }
+
+export async function sendDeploymentHeartbeat(ip: string): Promise<void>{
+  await axios.post(deploymentUrl(ip,`/deployment/heartbeat`), {});
+}
