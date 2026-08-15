@@ -34,7 +34,7 @@ function scheduleHeartbeat(ip: string) {
   setTimeout(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
 }
 
-function startHeartbeat(ip: string) {
+export function startHeartbeat(ip: string) {
   if (heartbeatStarted) {
     return;
   }
@@ -53,7 +53,7 @@ async function pollUntilRunning(ip: string) {
       // const baseUrl = `${ip}`;
       const baseUrl = BACKEND_URL;
       setBackendBaseUrl(baseUrl);
-      startHeartbeat(baseUrl);
+      // startHeartbeat(baseUrl);
       
       useDeploymentStore.getState().setReady(baseUrl);
       return;
