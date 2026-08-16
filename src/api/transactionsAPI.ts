@@ -40,7 +40,7 @@ export async function fetchTransactions(
 ): Promise<PaginatedResult<Transaction>> {
   const { data: envelope } = await protectedAxios.get<ApiResponse<TransactionListResponse>>(
     `/accounts/transactions/${accountId}`,
-    { params: { page, size: pageSize }, signal },
+    { params: { page: page-1, size: pageSize }, signal },
   );
 
   if (!envelope.success || envelope.code !== 200) {
