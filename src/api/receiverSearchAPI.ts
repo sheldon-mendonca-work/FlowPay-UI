@@ -78,7 +78,7 @@ export async function searchReceivers(
 ): Promise<PaginatedResult<ReceiverResult>> {
   const { data: envelope } = await protectedAxios.post<ApiResponse<AccountListResponse>>(
     "/accounts/list",
-    { search: query, page, page_size: pageSize },
+    { search: query, page: page-1, page_size: pageSize },
   );
 
   if (!envelope.success || envelope.code !== 200) {
