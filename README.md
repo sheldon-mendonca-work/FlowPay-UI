@@ -1,75 +1,155 @@
-# React + TypeScript + Vite
+# [FlowPay UI](https://flowpay-ui.netlify.app)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> React frontend for **FlowPay**, a distributed payment platform built to explore event-driven architecture, reliability engineering, concurrency, and financial consistency.
 
-Currently, two official plugins are available:
+The frontend provides the user-facing experience for payment processing, account management, authentication, offers, and real-time payment progress.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The primary engineering focus of FlowPay was the **backend and distributed-systems architecture**. The frontend was intentionally kept relatively lightweight and functional.
 
-## React Compiler
+---
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+## Tech Stack
 
-Note: This will impact Vite dev & build performances.
+* **React 19**
+* **TypeScript**
+* **Vite**
+* **React Router**
+* **TanStack React Query** — server-state management and API caching
+* **Zustand** — client-side state management
+* **Axios** — HTTP client
+* **React Hook Form + Zod** — forms and validation
+* **Tailwind CSS**
+* **shadcn/ui**
+* **Lucide React** — icons
+* **date-fns** — date/time formatting
+* **Notistack** — notifications
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Features
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Authentication
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+* User registration
+* Login
+* JWT-based authentication
+* Refresh token handling
+* Logout
+* Demo account access
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Payments
+
+* Create payments
+* View payment history
+* View payment details
+* Idempotent payment submission
+* Payment status tracking
+
+### Real-Time Payment Timeline
+
+The payment details interface can subscribe to the backend using **Server-Sent Events (SSE)**.
+
+The UI receives payment processing updates as the backend progresses through stages such as:
+
+```text
+PAYMENT_INITIATED
+        ↓
+KAFKA_PUBLISHED
+        ↓
+PAYMENT_VALIDATED
+        ↓
+ACCOUNTS_UPDATED
+        ↓
+PAYMENT_PERSISTED
+        ↓
+TRANSACTIONS_COMPLETED
+        ↓
+OUTBOX_EVENT_CREATED
+        ↓
+PAYMENT_COMPLETED
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+This allows the frontend to display payment progress without repeatedly polling for the entire timeline.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Offers
+
+* Browse available offers
+* View offer details
+* Apply eligible offers during payment
+* Display discount/cashback information
+* Handle offer reservation and redemption states
+
+---
+
+### Account Management
+
+* User account information
+* Company information
+* Account-related views
+* Transaction history
+
+---
+
+## Architecture
+
+The frontend communicates primarily with the FlowPay API Gateway rather than directly with individual backend services.
+
+```text
+                    ┌───────────────────┐
+                    │    FlowPay UI     │
+                    │ React + TypeScript│
+                    └─────────┬─────────┘
+                              │
+                         HTTPS / SSE
+                              │
+                              ▼
+                    ┌───────────────────┐
+                    │   API Gateway     │
+                    └─────────┬─────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              │               │               │
+              ▼               ▼               ▼
+         Payment          Account/Auth     Offer
+         Service           Services        Service
 ```
+
+Client-side responsibilities are separated from server state where appropriate:
+
+* **React Query** → remote/server state
+* **Zustand** → local application state
+* **Axios** → API communication
+* **SSE/EventSource** → real-time payment timeline updates
+
+---
+
+## Engineering Focus
+
+The frontend was primarily built to provide a usable interface for exercising and demonstrating the backend distributed-system architecture.
+
+The main engineering effort in FlowPay went into:
+
+* Distributed payment processing
+* Kafka-based event-driven workflows
+* Idempotency
+* Transactional outbox
+* Concurrent offer redemption
+* Failure recovery
+* Redis
+* PostgreSQL consistency
+* Observability
+* Real-time payment timelines
+
+The UI therefore intentionally favors **simplicity and functionality over frontend architectural complexity**.
+
+---
+
+## AI Usage
+
+AI was used extensively during frontend development, with roughly **70% of the frontend implementation assisted or generated by AI**.
+
+The frontend was not the primary learning objective of FlowPay; the majority of hands-on engineering effort was deliberately spent on the backend and distributed-systems problems.
+
+> **Honest footnote:** This README was also generated with AI. At least I'm consistent. 🤖
